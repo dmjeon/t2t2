@@ -13,10 +13,10 @@ require_role 'WEB-*'
 resolve_dc_vars
 
 banner "WEB 계층 (nginx)" "WEB tier (nginx)"
-kv "로컬 L4 VIP / local L4"   "${L4_VIP}"
-kv "로컬 WAS / local WAS"     "${WAS_LOCAL}   (/health/local direct target)"
-kv "점검 VS / check VS"       "${CHECK_VS}"
-kv "반대편 WEB / peer WEB"    "${PEER_WEB}"
+kv "local L4 VIP"  "${L4_VIP}"
+kv "local WAS"     "${WAS_LOCAL}   (/health/local direct target)"
+kv "check VS"      "${CHECK_VS}"
+kv "peer WEB"      "${PEER_WEB}"
 kv "server_name"              "${SERVICE_FQDN} ${WEB_FQDN}"
 
 step "nginx 설치" "Install nginx"

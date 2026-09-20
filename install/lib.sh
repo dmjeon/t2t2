@@ -10,12 +10,14 @@
 #   msg  "한글" "English"   →      한글
 #                                  English
 #   say  "ascii"            →      ascii            (값·경로 등 번역 불필요)
-#   kv   "label" "value"    →      label        value
+#   kv   "label" "value"    →      label        value   (라벨은 ASCII 만!
+#                                한글은 printf 폭 계산이 어긋나 정렬이 깨진다)
 #
-# 역할(AADC_ROLE)은 세 군데서 올 수 있고, 앞이 이긴다.
+# 역할(AADC_ROLE)은 네 군데서 올 수 있고, 앞이 이긴다.
 #   1) 첫 번째 인자      ./30-web.sh WEB-DC1
 #   2) 환경변수          AADC_ROLE=WEB-DC1 ./30-web.sh
-#   3) config.env        AADC_ROLE="..."
+#   3) 이 호스트의 IP    ← 평소에는 이것만으로 충분하다. 인자 불필요
+#   4) config.env        AADC_ROLE="..."   (최후. 7대 중 6대에서 틀린 값이다)
 #
 # ★ AADC_DC 는 역할에서 유도한다. 사람이 따로 적지 않는다.
 #   역할과 DC 를 각각 적게 하면 둘이 어긋난 채로 설치되는 사고가 난다.
@@ -38,9 +40,38 @@ _env_role="${AADC_ROLE:-}"
 # shellcheck disable=SC1091
 . "${ROOT}/config.env"
 
-# ----- 역할 결정 (인자 > 환경변수 > config.env) ------------------------------
-if   [ -n "${AADC_ROLE_ARG:-}" ]; then AADC_ROLE="${AADC_ROLE_ARG}"
-elif [ -n "${_env_role}" ];       then AADC_ROLE="${_env_role}"
+# ----- 이 호스트의 IP 로 역할을 알아낸다 --------------------------------------
+# config.env 의 AADC_ROLE 은 7대 중 6대에서 틀린 값이다. 기본값 하나를
+# 서버마다 고치게 하는 대신, 서버가 자기가 누구인지 스스로 말하게 한다.
+detect_role_by_ip() {
+  local ips ip
+  ips="$( (ip -4 -o addr show scope global 2>/dev/null \
+             | awk '{split($4,a,"/"); print a[1]}') \
+          || hostname -I 2>/dev/null )"
+  for ip in ${ips}; do
+    case "${ip}" in
+      "${WEB_DC1_IP}")    echo WEB-DC1;      return 0 ;;
+      "${WEB_DC2_IP}")    echo WEB-DC2;      return 0 ;;
+      "${WAS_DC500_IP}")  echo WAS-APP1-500; return 0 ;;
+      "${WAS_DC400_IP}")  echo WAS-DC2;      return 0 ;;
+      "${DB_MASTER_IP}")  echo DB-MASTER;    return 0 ;;
+      "${DB_BACKUP_IP}")  echo DB-BACKUP;    return 0 ;;
+      "${DB_DR_IP}")      echo DB-DR;        return 0 ;;
+      # DB_VIP 는 일부러 넣지 않는다. VIP 를 잡은 노드는 자기 실주소로도
+      # 잡히므로, VIP 를 보고 역할을 정하면 전환 때마다 역할이 바뀐다.
+    esac
+  done
+  return 1
+}
+
+# ----- 역할 결정 (인자 > 환경변수 > IP 자동감지 > config.env) -----------------
+AADC_ROLE_SRC="config.env"
+if   [ -n "${AADC_ROLE_ARG:-}" ]; then
+  AADC_ROLE="${AADC_ROLE_ARG}";  AADC_ROLE_SRC="argument"
+elif [ -n "${_env_role}" ]; then
+  AADC_ROLE="${_env_role}";      AADC_ROLE_SRC="environment"
+elif _detected="$(detect_role_by_ip)"; then
+  AADC_ROLE="${_detected}";      AADC_ROLE_SRC="detected from this host's IP"
 fi
 
 case "${AADC_ROLE}" in
@@ -49,18 +80,21 @@ case "${AADC_ROLE}" in
   MONITOR)                                  AADC_DC="${AADC_DC:-DC-500}" ;;
   *)
     cat <<ROLEERR
-ERROR: 알 수 없는 역할 '${AADC_ROLE}'
-       unknown role '${AADC_ROLE}'
 
-  역할을 첫 번째 인자로 넘기면 config.env 를 고칠 필요가 없다.
-  Pass the role as the first argument - no need to edit config.env:
+ERROR: unknown role '${AADC_ROLE}'  /  알 수 없는 역할
 
-      ./$(basename "${BASH_SOURCE[1]}") WEB-DC1
+  FIX: pass the role as the first argument
+       ./$(basename "${BASH_SOURCE[1]}") WEB-DC1
 
-  쓸 수 있는 역할 / valid roles:
+  valid roles / 쓸 수 있는 역할
       DC-500 : WEB-DC1  WAS-APP1-500  DB-MASTER  DB-BACKUP
       DC-400 : WEB-DC2  WAS-DC2       DB-DR
-      기타   : MONITOR  (점프서버·모니터링 호스트 / jump or monitoring host)
+      other  : MONITOR
+
+  this host's IPs / 이 호스트의 IP
+      $(ip -4 -o addr show scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]}' | tr '\n' ' ')
+  (none of them matched config.env, so the role could not be detected)
+  (config.env 의 어느 주소와도 맞지 않아 자동 감지에 실패했다)
 ROLEERR
     exit 2 ;;
 esac
@@ -81,6 +115,7 @@ banner() {
   printf ' %s\n' "$1"
   printf ' %s\n' "$2"
   printf ' role=%s  dc=%s  host=%s\n' "${AADC_ROLE}" "${AADC_DC}" "$(hostname)"
+  printf ' role source: %s\n' "${AADC_ROLE_SRC}"
   printf '===============================================================\n'
 }
 
@@ -93,20 +128,26 @@ require_role() {                 # require_role <glob> [<glob> ...]
   done
   cat <<ROLEMISMATCH
 
-ERROR: 역할 '${AADC_ROLE}' 은 $(basename "${BASH_SOURCE[1]}") 의 대상이 아니다.
-       role '${AADC_ROLE}' is not handled by $(basename "${BASH_SOURCE[1]}")
+ERROR: role '${AADC_ROLE}' is not handled by $(basename "${BASH_SOURCE[1]}")
+       역할 '${AADC_ROLE}' 은 이 스크립트의 대상이 아니다
 
-  이 스크립트 대상 / this script handles:  $*
+  FIX: pass the role as the first argument
+       ./$(basename "${BASH_SOURCE[1]}") $(echo "$1" | tr -d '*')...
 
-  이 호스트에 맞는 것을 역할과 함께 실행할 것.
-  Run the right one for this host, passing the role explicitly:
+       ./10-db.sh   DB-MASTER | DB-BACKUP | DB-DR
+       ./20-was.sh  WAS-APP1-500 | WAS-DC2
+       ./30-web.sh  WEB-DC1 | WEB-DC2
 
-      ./10-db.sh   DB-MASTER | DB-BACKUP | DB-DR
-      ./20-was.sh  WAS-APP1-500 | WAS-DC2
-      ./30-web.sh  WEB-DC1 | WEB-DC2
+  this script handles / 이 스크립트 대상 :  $*
+  role came from / 역할 출처            :  ${AADC_ROLE_SRC}
 
-  (config.env 의 AADC_ROLE 기본값은 WAS-APP1-500 이다. 인자로 넘기는 쪽이 낫다.)
-  (config.env defaults AADC_ROLE to WAS-APP1-500; the argument overrides it.)
+  this host's IPs / 이 호스트의 IP
+      $(ip -4 -o addr show scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]}' | tr '\n' ' ')
+
+  IP 자동 감지가 됐다면 인자는 필요 없다. 위 주소가 config.env 의
+  WEB_DC1_IP / WAS_DC500_IP / DB_MASTER_IP ... 와 맞는지 확인할 것.
+  If auto-detection had worked you would not need the argument. Check that the
+  address above matches WEB_DC1_IP / WAS_DC500_IP / DB_MASTER_IP in config.env.
 ROLEMISMATCH
   exit 2
 }

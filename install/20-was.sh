@@ -12,8 +12,8 @@ require_bash
 require_role 'WAS-*'
 
 banner "WAS 계층 (FastAPI)" "WAS tier (FastAPI)"
-kv "DB 접속 / DB target" "${DB_APP_TARGET}:${DB_PORT}"
-kv "앱 버전 / version"   "${APP_VERSION}"
+kv "DB target" "${DB_APP_TARGET}:${DB_PORT}"
+kv "app version" "${APP_VERSION}"
 
 step "패키지" "Packages"
 dnf -y install python3 python3-pip mariadb >/dev/null
