@@ -22,6 +22,13 @@
 #
 # install/30-web.sh 가 ADMIN_ALLOW 로 allow 줄을, ADMIN_USER/ADMIN_PASS 로
 # /etc/nginx/.htpasswd 를 만든다.
+#
+# ★ ADMIN_AUTH=off 이면 30-web.sh 가 아래 auth_basic 두 줄을 주석 처리한다.
+#   그러면 ②가 없어지고 ① IP 목록만 남는다. 즉 **암호창이 안 뜨는 대신,
+#   주소가 안 맞으면 그냥 403 이다.** 앞단 SNAT 상황에서는 이게 흔하다.
+#   그때 전면 공개로 갈 생각이면 ADMIN_ALLOW="0.0.0.0/0" 으로 바꾼다 —
+#   위에 적힌 것(writer 신원·semi-sync·내부 IP)이 전부 공개된다는 뜻이다.
+#   되돌리기: config.env 의 ADMIN_AUTH=on → install/30-web.sh 재실행.
 # =============================================================================
 satisfy any;
 

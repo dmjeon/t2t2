@@ -110,13 +110,27 @@ kv "HEALTH_ALLOW" "${HEALTH_ALLOW}"
 
 # basic 인증 — IP 목록과 OR 조건(satisfy any).
 # 앞단이 SNAT 를 하면 nginx 는 고객 IP 를 못 보므로 IP 만으로는 들어올 수 없다.
+#
+# ADMIN_AUTH=off 여도 .htpasswd 는 그대로 만든다. 되돌릴 때 이 파일이 없어서
+# nginx 가 기동을 거부하는 상황을 막기 위해서다. 켜고 끄는 것은 include 한 줄이다.
 printf '%s:%s\n' "${ADMIN_USER}" "$(openssl passwd -apr1 "${ADMIN_PASS}")" \
   > /etc/nginx/.htpasswd
 chmod 0640 /etc/nginx/.htpasswd
 chown root:nginx /etc/nginx/.htpasswd
-kv "basic auth user" "${ADMIN_USER}   (/etc/nginx/.htpasswd)"
-msg "IP 가 안 맞아도 이 계정으로 들어올 수 있다 (satisfy any)." \
-    "If the source IP does not match, this account still gets you in."
+
+if [ "${ADMIN_AUTH:-on}" = "on" ]; then
+  kv "basic auth" "on   (${ADMIN_USER} / /etc/nginx/.htpasswd)"
+  msg "IP 가 안 맞아도 이 계정으로 들어올 수 있다 (satisfy any)." \
+      "If the source IP does not match, this account still gets you in."
+else
+  # auth_basic 두 줄만 주석 처리한다. satisfy any / allow / deny 는 그대로 둔다.
+  sed -i 's|^auth_basic|#auth_basic|' /etc/nginx/conf.d/acl-admin.inc
+  kv "basic auth" "off  (ADMIN_AUTH=off — 암호창 없음)"
+  warn "진입 조건이 ADMIN_ALLOW IP 목록 하나만 남았다. 앞단 SNAT 로 주소가 안 맞으면 403 이다." \
+       "Only the ADMIN_ALLOW IP list is left. If the front end SNATs, you get 403, not a prompt."
+  msg  "지금 나가는 주소는 /health/web 의 client 값이다 (ACL 없음). 되돌리려면 ADMIN_AUTH=on." \
+       "Check the client field of /health/web. Set ADMIN_AUTH=on to re-enable."
+fi
 
 step "검증 화면" "Verification page"
 install -d -m 0755 /usr/share/nginx/html/aadc
@@ -167,7 +181,11 @@ msg "밖에서 403 이 나오면 앞단 SNAT 때문이다. nginx 가 본 주소�
 say "curl -s http://<이 서버의 공인 IP>/health/web"
 say "  raw=앞단 장비 주소 + xff 비어 있음  ->  IP ACL 로는 통과 불가"
 say "  그 경우 basic 인증으로 들어간다 / then use basic auth:"
-say "  curl -u ${ADMIN_USER} http://<공인 IP>/"
+if [ "${ADMIN_AUTH:-on}" = "on" ]; then
+  say "  curl -u ${ADMIN_USER} http://<공인 IP>/"
+else
+  say "  curl http://<공인 IP>/        # ADMIN_AUTH=off — 암호 없음"
+fi
 
 IP4="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat <<NEXT

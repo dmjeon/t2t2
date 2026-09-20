@@ -273,9 +273,11 @@ function renderPathMap(infoR, layers) {
   const svg = $('#pathMap');
   if (!svg) return;
 
-  const web  = (layers.web && layers.web.ok) ? (layers.web.body || {}) : null;
+  const webR  = layers.web,  deepR = layers.deep;
+  const cvR   = layers.checkvs, peerR = layers.peer, dbR = layers.db;
+  const web  = (webR && webR.ok) ? (webR.body || {}) : null;
   const info = (infoR && infoR.ok) ? (infoR.body || {}) : null;
-  const db   = (layers.db && layers.db.ok) ? (layers.db.body || {}) : null;
+  const db   = (dbR && dbR.ok) ? (dbR.body || {}) : null;
 
   const addr = (web && web.web_addr) || '';
   const dc = addr.startsWith('10.7.') ? 'DC-400'
@@ -286,20 +288,35 @@ function renderPathMap(infoR, layers) {
   const other  = left ? MAP_IDS.right : MAP_IDS.left;
   const direct = !!((web && web.upstream_mode === 'direct') || (info && info.path_mode === 'direct'));
   const wasDc  = (info && info.was_dc) || dc;
-  const cross  = !!(info && info.cross_dc === true) || wasDc !== dc;
+  const cross  = !!(info && (info.cross_dc === true || info.was_dc !== dc));
+  const wasSide = (wasDc === 'DC-400') ? MAP_IDS.right : MAP_IDS.left;
 
+  /* 켜는 것 = 방금 실제로 지나간 홉 */
   const on  = ['n-inet', me.eIn, me.gslb, me.eGf, me.fg, me.eFw, me.web];
   const hot = [];
+  /* 끊는 것 = 가야 하는데 못 간 홉. 평시 경로든 대기 경로든 똑같이 표시한다 */
+  const dead = [];
+  const miss = [];
   const steps = [left ? 'WEB-DC1' : 'WEB-DC2'];
 
   if (!info) {
-    // WAS 응답이 없다. WEB 까지만 켜고 거기서 끊어 보여 준다.
+    // WAS 응답이 없다. 상태 코드가 어느 홉에서 끊겼는지를 말해 준다.
+    const st = (infoR && infoR.status) || 0;
     hot.push(me.web);
-    steps.push('WAS 응답 없음');
+    if (direct) {
+      dead.push(me.eDirect, me.was);
+    } else if (st === 504) {
+      dead.push(me.eLw, me.was);                 // L4 는 응답, WAS 가 못 답함
+      on.push(me.eWl, me.l4);
+    } else {
+      dead.push(me.eWl, me.l4);                  // 502 / 연결 실패 = L4 VIP 도달 실패
+    }
+    miss.push(`WEB → WAS ${st ? 'HTTP ' + st : '연결 실패'}`);
+    steps.push('여기서 끊김');
   } else {
     if (direct) {
-      on.push(me.eDirect, cross ? other.was : me.was);
-      hot.push(cross ? other.was : me.was);
+      on.push(me.eDirect, wasSide.was);
+      hot.push(wasSide.was);
       steps.push('다이렉트(L4 우회)');
     } else {
       on.push(me.eWl, me.l4, me.eFadc, me.fadc);
@@ -308,26 +325,55 @@ function renderPathMap(infoR, layers) {
       else       { on.push(me.eLw, me.was); }
     }
     steps.push((info.was_host || 'WAS') + ' / ' + wasDc);
-
-    const wasLeft = wasDc !== 'DC-400';
-    on.push(wasLeft ? MAP_IDS.left.eDb : MAP_IDS.right.eDb, 'n-dbvip', 'e-vip-writer', 'n-writer');
+    on.push(wasSide.eDb, 'n-dbvip', 'e-vip-writer', 'n-writer');
     if (!db || db.temporary_backend) hot.push('n-dbvip', 'n-writer');
     steps.push('DB ' + ((db && db.db_target) || '?'));
+
+    // WAS → DB. deep 의 유일한 일이 writer 도달 확인이므로 이게 곧 DB 구간이다.
+    const deepBody = (deepR && deepR.body) || {};
+    if (!deepR || !deepR.ok || deepBody.status !== 'ok') {
+      dead.push(wasSide.eDb, 'e-vip-writer', 'n-dbvip', 'n-writer');
+      miss.push('WAS → DB writer 도달 실패' + (deepBody.reason ? ` (${deepBody.reason})` : ''));
+      steps[steps.length - 1] = 'DB 도달 실패';
+    }
   }
 
-  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('on', 'hot'));
-  on.forEach((id)  => { const g = document.getElementById(id); if (g) g.classList.add('on'); });
-  hot.forEach((id) => { const g = document.getElementById(id); if (g) g.classList.add('hot'); });
+  /* 교차 backup 멤버 — 평시 트래픽이 0 이라 여기 말고는 죽은 걸 알 데가 없다.
+   * 이게 끊긴 상태에서 로컬 WAS 가 죽으면 흡수 주체 없이 바로 DC 장애가 된다. */
+  if (!cross) {
+    if (direct) {
+      dead.push(me.eCross);
+      miss.push('backup 멤버 없음 — L4 우회 중이라 흡수 경로 자체가 존재하지 않는다');
+    } else if (!cvR || !cvR.ok || !(cvR.body && cvR.body.was_host)) {
+      dead.push(me.eCross, other.was);
+      miss.push('backup 멤버 도달 실패 — 지금 로컬 WAS 가 죽으면 흡수할 곳이 없다');
+    }
+  }
+
+  /* 반대편 DC — GSLB 가 넘길 수 있는 곳. 여기가 죽어 있으면 전환 카드가 없다. */
+  const peerBody = (peerR && peerR.body) || {};
+  if (!peerR || !peerR.ok || peerBody.status !== 'ok') {
+    dead.push(other.eIn, other.gslb, other.fg, other.web);
+    if (!cross) dead.push(other.was);
+    miss.push('반대편 DC 무응답 — GSLB 가 넘길 곳이 없다');
+  }
+
+  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('on', 'hot', 'dead'));
+  on.forEach((id)   => { const g = document.getElementById(id); if (g) g.classList.add('on'); });
+  hot.forEach((id)  => { const g = document.getElementById(id); if (g) g.classList.add('hot'); });
+  dead.forEach((id) => { const g = document.getElementById(id); if (g) g.classList.add('dead'); });
 
   /* 살아 있는 값으로 라벨을 바꾼다. 고정 문구를 두면 실제와 다른 주소를
    * 읽고 그대로 믿게 된다. */
   mapText('t-web1', left && addr ? addr : '10.3.11.51');
   mapText('t-web2', !left && addr ? addr : '10.7.11.52');
   const vipTxt = (web && web.upstream_target) ? String(web.upstream_target).split(':')[0] : null;
-  mapText('t-l4vip1', (left && !direct && vipTxt) ? vipTxt : '10.3.20.x · 미회신', !(left && !direct && vipTxt));
-  mapText('t-l4vip2', (!left && !direct && vipTxt) ? vipTxt : '10.7.20.x · 미회신', !(!left && !direct && vipTxt));
+  const vipOk = !direct && !!vipTxt;
+  mapText('t-l4vip1', (left && vipOk) ? vipTxt : '10.3.20.x · 미회신', !(left && vipOk));
+  mapText('t-l4vip2', (!left && vipOk) ? vipTxt : '10.7.20.x · 미회신', !(!left && vipOk));
   if (info && info.was_host) mapText(wasDc === 'DC-400' ? 't-was2' : 't-was1', info.was_host);
-  mapText('t-dbtarget', db ? (db.db_target || '?') + (db.temporary_backend ? ' · 임시' : ' · VIP') : '—', !db || !!db.temporary_backend);
+  mapText('t-dbtarget', db ? (db.db_target || '?') + (db.temporary_backend ? ' · 임시' : ' · VIP') : '—',
+          !db || !!db.temporary_backend);
   mapText('t-writer', (db && db.writer && db.writer.hostname) || 'DB writer');
   mapText('t-writer-sub',
     !db ? '응답 없음'
@@ -336,7 +382,6 @@ function renderPathMap(infoR, layers) {
         : 'rw · semi=' + ((db.semi_sync && db.semi_sync.Rpl_semi_sync_master_status) || '?'),
     !db || db.backend === 'sqlite' || Number(db.writer && db.writer.read_only) !== 0);
 
-  const legend = $('#mapLegend');
   const notes = [];
   if (direct) notes.push('L4 우회 — Full NAT·backup 흡수·L4 장애 감지가 미검증이다');
   if (cross)  notes.push('교차 경유 — 본문과 쿼리가 전부 DCI 를 건넌다');
@@ -344,8 +389,13 @@ function renderPathMap(infoR, layers) {
   if (db && db.backend === 'mariadb' && !db.rpo_zero) notes.push('semi-sync 강등 — RPO 0 이 아니다');
   if (web && !web.xff) notes.push('XFF 없음 — 고객 IP 가 앞단에서 소실됐다');
 
-  legend.className = 'banner ' + (!info ? 'fail' : (notes.length ? 'warn' : 'ok'));
-  legend.textContent = steps.join('  →  ') + (notes.length ? '   ·   ' + notes.join(' / ') : '');
+  const legend = $('#mapLegend');
+  legend.className = 'banner ' + (miss.length ? 'fail' : (notes.length ? 'warn' : 'ok'));
+  legend.replaceChildren();
+  legend.appendChild(el('div', null, steps.join('  →  ')));
+  if (miss.length) legend.appendChild(el('div', 'missline', '✕ 못 간 경로 — ' + miss.join(' / ')));
+  if (notes.length) legend.appendChild(el('div', 'noteline', '· ' + notes.join(' / ')));
+  track('pathmap', (miss.length ? 'BROKEN:' + miss.length : 'OK') + '/' + steps.join('>'), '활성 경로');
 }
 
 /* ---------- 3. 분포 ---------- */
