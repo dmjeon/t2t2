@@ -97,6 +97,31 @@ case "${AADC_ROLE}" in
   WEB-DC1|WAS-APP1-500|DB-MASTER|DB-BACKUP) AADC_DC="DC-500" ;;
   WEB-DC2|WAS-DC2|DB-DR)                    AADC_DC="DC-400" ;;
   MONITOR)                                  AADC_DC="${AADC_DC:-DC-500}" ;;
+  "")
+    cat <<NOROLE
+
+ERROR: role not determined  /  역할이 정해지지 않았다
+
+  FIX: pass the role as the first argument
+       ./$(basename "${BASH_SOURCE[1]}") DB-MASTER
+
+  왜 자동으로 못 정했나 / why auto-detection did not decide
+      이 호스트의 IP : $(host_ips | tr '\n' ' ')
+      config.env 의 서버 IP 표 어디에도 없다.
+      None of these appear in the server IP table in config.env.
+
+      임시 주소로 설치 중이면 이게 정상이다. 인자로 넘기면 된다.
+      This is expected while installing on a temporary address - just pass it.
+
+  자세한 판정 과정 / full resolution detail
+      ./whoami.sh
+
+  valid roles / 쓸 수 있는 역할
+      DC-500 : WEB-DC1  WAS-APP1-500  DB-MASTER  DB-BACKUP
+      DC-400 : WEB-DC2  WAS-DC2       DB-DR
+      other  : MONITOR
+NOROLE
+    exit 2 ;;
   *)
     cat <<ROLEERR
 

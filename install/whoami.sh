@@ -57,7 +57,8 @@ printf '  %-22s %s\n' "env AADC_ROLE" "${AADC_ROLE:-<unset>}"
 
 # shellcheck source=lib.sh
 if . "${HERE_DIR}/lib.sh" 2>/tmp/aadc-whoami.err; then
-  printf '  %-22s %s\n' "config.env default" "$(grep -E '^AADC_ROLE=' "$(cd "${HERE_DIR}/.." && pwd)/config.env" | cut -d= -f2- | tr -d '\"')"
+  cfgrole="$(grep -E '^AADC_ROLE=' "$(cd "${HERE_DIR}/.." && pwd)/config.env" | cut -d= -f2- | tr -d '"')"
+  printf '  %-22s %s\n' "config.env default" "${cfgrole:-<empty — 의도된 것. 인자로 줘야 한다>}"
   printf '  %-22s %s\n' "detected by IP" "$(detect_role_by_ip 2>/dev/null || echo '<no match>')"
   echo
   printf '  %-22s %s\n' "=> AADC_ROLE"   "${AADC_ROLE}"
