@@ -74,6 +74,25 @@ elif _detected="$(detect_role_by_ip)"; then
   AADC_ROLE="${_detected}";      AADC_ROLE_SRC="detected from this host's IP"
 fi
 
+host_ips() {
+  (ip -4 -o addr show scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]}') \
+    || hostname -I 2>/dev/null | tr ' ' '\n'
+}
+
+# 이 역할이 원래 가져야 할 주소. 임시 주소로 설치 중인지 판별하는 데 쓴다.
+expected_ip_for_role() {
+  case "$1" in
+    WEB-DC1)      echo "${WEB_DC1_IP}" ;;
+    WEB-DC2)      echo "${WEB_DC2_IP}" ;;
+    WAS-APP1-500) echo "${WAS_DC500_IP}" ;;
+    WAS-DC2)      echo "${WAS_DC400_IP}" ;;
+    DB-MASTER)    echo "${DB_MASTER_IP}" ;;
+    DB-BACKUP)    echo "${DB_BACKUP_IP}" ;;
+    DB-DR)        echo "${DB_DR_IP}" ;;
+    *)            echo "" ;;
+  esac
+}
+
 case "${AADC_ROLE}" in
   WEB-DC1|WAS-APP1-500|DB-MASTER|DB-BACKUP) AADC_DC="DC-500" ;;
   WEB-DC2|WAS-DC2|DB-DR)                    AADC_DC="DC-400" ;;
@@ -99,6 +118,36 @@ ROLEERR
     exit 2 ;;
 esac
 export AADC_ROLE AADC_DC
+
+# ----- 임시 주소로 설치 중인가 -----------------------------------------------
+# 방화벽이 안 열려 패키지를 못 받는 세그먼트에서, 인터넷이 되는 대역의 주소를
+# 임시로 붙여 설치만 먼저 하는 경우가 있다. 그 상태에서는 **주소에 묶인 구성이
+# 전부 틀어진다** — keepalived unicast, VIP 서브넷, 게이트웨이 증인 같은 것들.
+# 설치 스크립트가 그걸 알고 건너뛸 수 있게 여기서 판정해 둔다.
+ROLE_EXPECTED_IP="$(expected_ip_for_role "${AADC_ROLE}")"
+TEMP_ADDRESS="no"
+if [ -n "${ROLE_EXPECTED_IP}" ] && ! host_ips | grep -qx "${ROLE_EXPECTED_IP}"; then
+  TEMP_ADDRESS="yes"
+fi
+export ROLE_EXPECTED_IP TEMP_ADDRESS
+
+warn_temp_address() {
+  [ "${TEMP_ADDRESS}" = "yes" ] || return 0
+  cat <<TEMPADDR
+
+  ---------------------------------------------------------------------------
+  ★ 임시 주소로 설치 중이다 / INSTALLING ON A TEMPORARY ADDRESS
+
+    이 역할의 주소 / expected : ${ROLE_EXPECTED_IP}
+    이 호스트의 주소 / actual : $(host_ips | tr '\n' ' ')
+
+    주소에 묶인 구성은 건너뛴다. 정식 주소로 옮긴 뒤 같은 스크립트를 다시
+    돌리면 그때 구성된다 (스크립트는 여러 번 돌려도 된다).
+    Address-bound configuration is skipped. Re-run this script after moving
+    the host to its real address; these scripts are safe to run repeatedly.
+  ---------------------------------------------------------------------------
+TEMPADDR
+}
 
 # ----- 출력 헬퍼 -------------------------------------------------------------
 _step=0

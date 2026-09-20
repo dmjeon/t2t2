@@ -15,6 +15,7 @@ require_bash
 require_role 'DB-MASTER' 'DB-BACKUP' 'DB-DR'
 
 banner "DB 계층 (MariaDB)" "DB tier (MariaDB)"
+warn_temp_address
 
 step "MariaDB 설치" "Install MariaDB"
 dnf -y install mariadb-server mariadb >/dev/null
@@ -43,7 +44,19 @@ case "${AADC_ROLE}" in
   DB-DR)     "${ROOT}/db/init-03-dr.sh" ;;
 esac
 
-if [ "${AADC_ROLE}" = "DB-MASTER" ] || [ "${AADC_ROLE}" = "DB-BACKUP" ]; then
+if [ "${TEMP_ADDRESS}" = "yes" ]; then
+  # 임시 주소에서는 keepalived 를 구성하지 않는다. 구성해 봐야 셋 다 틀어진다:
+  #   · unicast_src_ip ${DB_MASTER_IP} 가 이 호스트에 없다 → 광고를 못 보낸다
+  #   · VIP ${DB_VIP}/24 를 다른 서브넷 인터페이스에 올리게 된다
+  #   · 증인 게이트웨이 ${GW_DC_DB} 에 닿지 못해 chk_db 가 늘 FAULT 다
+  # 셋 중 무엇도 에러로 죽지 않고 "켜져 있는데 동작 안 함"이 되는 것이 문제다.
+  step "keepalived" "keepalived"
+  msg "임시 주소라 구성하지 않는다. 정식 주소로 옮긴 뒤 다시 돌릴 것." \
+      "Skipped on a temporary address. Re-run after moving to the real address."
+  say "패키지만 미리 받아 둔다 / pre-fetching the package only"
+  dnf -y install keepalived >/dev/null || true
+
+elif [ "${AADC_ROLE}" = "DB-MASTER" ] || [ "${AADC_ROLE}" = "DB-BACKUP" ]; then
   step "keepalived (DC-500 내부 VIP)" "keepalived (VIP inside DC-500)"
   dnf -y install keepalived >/dev/null
 
@@ -82,7 +95,7 @@ if [ "${AADC_ROLE}" = "DB-MASTER" ] || [ "${AADC_ROLE}" = "DB-BACKUP" ]; then
   # 즉 DB 계층은 모니터링 없이도 정상 동작한다. 다만 조용할 뿐이다.
 fi
 
-cat <<'NEXT'
+cat <<NEXT
 
 -------------------------------------------------------------------------------
 확인 / Check
@@ -96,6 +109,12 @@ cat <<'NEXT'
     타고 DC-400 까지 흘러간다.
     VRRP is unicast: dc-db is a stretched segment, so multicast would leak
     the advertisements across the DCI into DC-400.
+
+정식 주소로 옮긴 뒤 / After moving to the real address
+  1) 주소 변경 (${ROLE_EXPECTED_IP}) 후 재부팅 또는 네트워크 재시작
+  2) cd /root/dcdc && ./install/10-db.sh ${AADC_ROLE}
+     → 이때 keepalived 가 구성된다. 앞서 설치한 MariaDB·스키마는 그대로 쓴다.
+  3) ../db/check-replication.sh 로 VIP 보유와 read_only 를 확인
 
 나중에 / Later (지금 안 해도 DB 는 정상 동작한다 / the DB works without this)
   ./50-monitoring.sh <role>
