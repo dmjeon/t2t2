@@ -26,12 +26,11 @@
 <section class="card wide" id="pathMapCard">
   <h2>지금 활성화된 경로</h2>
   <p class="hint">
-    밝은 선이 방금 이 화면의 요청이 지나간 홉이다. 흐린 선은 구성은 되어 있으나
-    지금 쓰이지 않는 경로다. 왼쪽 <b>DC-500</b>, 오른쪽 <b>DC-400</b>.
-    노란 선은 <b>VIP 경로가 아닌 다이렉트(L4 우회)</b>,
-    <b class="brklegend">✕ 빨간 점선은 갔어야 하는데 못 간 경로</b>다 —
-    평시 트래픽이 0 인 backup·반대편 DC 경로는 이 표시가 아니면
-    <b>장애가 나야 비로소</b> 죽은 걸 알게 된다.
+    왼쪽 <b>DC-500</b>, 오른쪽 <b>DC-400</b>. 세 가지만 칠한다 —
+    <b class="lg-cur">파란 실선 = 지금 지나간 경로</b>,
+    <b class="lg-alt">초록 점선 = 끊겼을 때 넘어갈 수 있는 곳</b>(살아 있음이 확인된 것만),
+    <b class="lg-fail">빨간 ✕ 점선 = 설정은 됐는데 못 가는 경로</b>.
+    구성 자체가 없는 경로는 칠하지 않는다 — 없는 것과 고장난 것이 같은 색이면 둘 다 안 보인다.
   </p>
   <div id="mapLegend" class="banner">확인 중…</div>
   <div class="mapbox">

@@ -191,44 +191,59 @@ footer {
 #pathMap .mk-idle   { fill: var(--idle); }
 #pathMap .mk-warn   { fill: var(--warn); }
 
-/* 평시에는 전부 흐리게 깔아 두고, 지금 살아 있는 홉만 켠다. */
-#pathMap g.n, #pathMap g.e-g { opacity: .16; transition: opacity .25s; }
-#pathMap g.n.on, #pathMap g.e-g.on { opacity: 1; }
-#pathMap g.n.on .nd { stroke-width: 2.6; }
+/* ---------------------------------------------------------------------------
+ * 세 가지만 칠한다.
+ *
+ *   cur   지금 지나간 경로            — 원래 색(트래픽 파랑 / DB 보라), 불투명
+ *   alt   넘어갈 수 있는 곳            — 초록 점선. 살아 있음이 확인된 것만
+ *   fail  설정됐는데 못 가는 경로      — 빨강 점선 + ✕
+ *
+ * 나머지는 배경이다. 구성이 아예 없는 경로(L4 우회 중의 backup 멤버 등)는
+ * 여기에 들어오지 않는다 — 없는 것과 고장난 것이 같은 색이면 둘 다 안 보인다.
+ * ------------------------------------------------------------------------- */
+#pathMap g.n, #pathMap g.e-g { opacity: .1; transition: opacity .25s; }
+#pathMap g.n.cur, #pathMap g.e-g.cur,
+#pathMap g.n.alt, #pathMap g.e-g.alt,
+#pathMap g.n.fail, #pathMap g.e-g.fail { opacity: 1; }
+
+/* ① 현재 경로 */
+#pathMap g.n.cur .nd { stroke-width: 2.6; }
 #pathMap .halo { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0; }
-#pathMap g.n.on .halo { opacity: 1; animation: aadcPulse 2.4s ease-out infinite; }
-#pathMap g.n.on.hot .halo { stroke: var(--warn); }
-#pathMap g.n.on.hot .nd   { stroke: var(--warn); stroke-dasharray: 3.2 2.6; }
+#pathMap g.n.cur .halo { opacity: 1; animation: aadcPulse 2.4s ease-out infinite; }
 @keyframes aadcPulse { 0% { r: 14; opacity: .85; } 100% { r: 22; opacity: 0; } }
 
-@media (prefers-reduced-motion: reduce) {
-  #pathMap g.n.on .halo { animation: none; opacity: .5; }
-  #pathMap g.n, #pathMap g.e-g { transition: none; }
-}
+/* ② 대체 가능 */
+#pathMap g.e-g.alt line.e,
+#pathMap g.e-g.alt polyline.e { stroke: var(--ok); stroke-dasharray: 6 4; }
+#pathMap g.e-g.alt .el { fill: var(--ok); }
+#pathMap g.n.alt .nd   { stroke: var(--ok); }
+#pathMap g.n.alt .halo { opacity: .55; stroke: var(--ok); animation: none; }
 
-/* 갔어야 하는데 못 간 자리.
- *
- * 흐리게 깔린 것(= 지금 안 쓰는 경로)과 끊긴 것(= 쓰려 해도 못 쓰는 경로)은
- * 전혀 다른 뜻이다. 그래서 dead 는 dim 을 뚫고 항상 보인다. 평시 트래픽 0 인
- * backup 경로는 이 표시가 아니면 장애가 나야 비로소 죽은 걸 알게 된다. */
+/* ③ 설정됐는데 실패 */
 #pathMap .brk {
   font: 700 14px -apple-system, sans-serif; fill: var(--fail);
   text-anchor: middle; opacity: 0; paint-order: stroke;
   stroke: var(--surface); stroke-width: 3.5px;
 }
-#pathMap g.e-g.dead { opacity: 1; }
-#pathMap g.e-g.dead .brk { opacity: 1; }
-#pathMap g.e-g.dead line.e,
-#pathMap g.e-g.dead polyline.e { stroke: var(--fail); stroke-dasharray: 3 4; }
-#pathMap g.e-g.dead .el { fill: var(--fail); }
-#pathMap g.n.dead { opacity: 1; }
-#pathMap g.n.dead .nd { stroke: var(--fail); stroke-dasharray: 3 3; }
-#pathMap g.n.dead .halo { opacity: 1; stroke: var(--fail); animation: none; }
-#pathMap g.n.dead .nm { fill: var(--fail); }
+#pathMap g.e-g.fail .brk { opacity: 1; }
+#pathMap g.e-g.fail line.e,
+#pathMap g.e-g.fail polyline.e { stroke: var(--fail); stroke-dasharray: 3 4; }
+#pathMap g.e-g.fail .el { fill: var(--fail); }
+#pathMap g.n.fail .nd   { stroke: var(--fail); stroke-dasharray: 3 3; }
+#pathMap g.n.fail .nm   { fill: var(--fail); }
+#pathMap g.n.fail .halo { opacity: .55; stroke: var(--fail); animation: none; }
 
-/* 배너는 테두리로 상태를 말하고, 줄마다 역할이 다르다.
- * 1줄 = 실제로 지나간 경로 / 2줄 = 못 간 경로 / 3줄 = 지나갔지만 정상은 아닌 것 */
-#mapLegend { line-height: 1.5; color: var(--text); }
-#mapLegend .missline { color: var(--fail); font-size: 12.5px; margin-top: 4px; }
-#mapLegend .noteline { color: var(--muted); font-size: 12.5px; font-weight: 400; margin-top: 2px; }
-.brklegend { color: var(--fail); }
+@media (prefers-reduced-motion: reduce) {
+  #pathMap g.n.cur .halo { animation: none; opacity: .5; }
+  #pathMap g.n, #pathMap g.e-g { transition: none; }
+}
+
+/* 배너 — 줄마다 위 세 가지에 그대로 대응한다. */
+#mapLegend { line-height: 1.6; color: var(--text); }
+#mapLegend > div { font-size: 12.5px; }
+#mapLegend .curline  { color: var(--text); font-weight: 600; }
+#mapLegend .altline  { color: var(--ok); font-weight: 500; margin-top: 3px; }
+#mapLegend .failline { color: var(--fail); font-weight: 500; margin-top: 3px; }
+.lg-cur  { color: var(--accent); }
+.lg-alt  { color: var(--ok); }
+.lg-fail { color: var(--fail); }
