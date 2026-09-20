@@ -249,6 +249,8 @@ footer {
 #mapLegend > div { font-size: 12.5px; }
 #mapLegend .curline  { color: var(--text); font-weight: 600; }
 #mapLegend .failline { color: var(--fail); font-weight: 500; margin-top: 3px; }
+/* 권한 없음 = 판정 불가. 빨간색을 쓰지 않는다 — 고칠 대상이 다르다. */
+#mapLegend .denyline { color: var(--muted); font-weight: 400; margin-top: 3px; }
 
 .lg-cur  { color: var(--accent); }
 .lg-fail { color: var(--fail); }

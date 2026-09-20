@@ -157,8 +157,13 @@ const LAYERS = [
  * 카드에서 예외가 나면 나머지 4개가 통째로 사라졌다. 화면에는 첫 카드만 남고
  * 아무 설명도 없었다. 진단 화면에서 그건 최악의 실패 방식이다 —
  * "무엇이 고장났는지" 대신 "화면이 고장났다"를 보게 된다. */
+/* 403 은 **우리 ACL** 이 막은 것이지 그 경로가 죽은 게 아니다.
+ * 이걸 빨갛게 세면 "볼 권한이 없다"가 "장애"로 둔갑한다. 진단 화면에서
+ * 제일 나쁜 실패 방식이다 — 멀쩡한 계층을 고치러 가게 만든다. */
+const isDenied = (r) => r && r.status === 403;
+
 function renderLayerCard(L, r) {
-  const grade = L.grade ? L.grade(r) : (r.ok ? 'ok' : 'fail');
+  const grade = isDenied(r) ? 'na' : (L.grade ? L.grade(r) : (r.ok ? 'ok' : 'fail'));
 
   const card = el('div', 'layer ' + grade);
   const name = el('div', 'name');
@@ -169,7 +174,11 @@ function renderLayerCard(L, r) {
   card.appendChild(el('div', 'desc', L.desc));
 
   let det = '';
-  try { det = L.detail(r.body || {}) || ''; } catch (e) { det = `detail error: ${e.message}`; }
+  if (isDenied(r)) {
+    det = '접근 권한 없음 (ACL) — 이 경로의 상태는 여기서 알 수 없다';
+  } else {
+    try { det = L.detail(r.body || {}) || ''; } catch (e) { det = `detail error: ${e.message}`; }
+  }
   card.appendChild(el('div', 'det', det));
 
   // 카드가 자기 말고 다른 것도 갱신해야 할 때 (예: L4 우회 배너)
@@ -305,7 +314,7 @@ function renderPathMap(infoR, layers) {
    * 설정 자체가 없는 경로(예: L4 우회 중의 backup 멤버)는 fail 이 아니다.
    * 없는 것을 빨갛게 칠하면 고칠 것과 없는 것이 같은 색이 된다. */
   const cur = [], fail = [];
-  const sCur = [], sFail = [];
+  const sCur = [], sFail = [], sDenied = [];
 
   // 어느 WEB 이 줬는지부터 모르면 아무것도 칠하지 않는다. 좌우를 찍어서
   // 칠하면 멀쩡한 쪽을 빨갛게 만들 수 있다.
@@ -316,7 +325,10 @@ function renderPathMap(infoR, layers) {
     sCur.push(left ? 'WEB-DC1' : 'WEB-DC2');
   }
 
-  if (web && !info) {
+  if (web && !info && isDenied(infoR)) {
+    sDenied.push('/api/info (ADMIN_ALLOW)');
+    sCur.push('WAS 구간 판정 불가');
+  } else if (web && !info) {
     // WAS 응답이 없다. 상태 코드가 어느 홉에서 끊겼는지 말해 준다.
     const st = (infoR && infoR.status) || 0;
     if (direct) {
@@ -349,10 +361,12 @@ function renderPathMap(infoR, layers) {
 
     // WAS → DB. deep 의 유일한 일이 writer 도달 확인이라 이게 곧 DB 구간이다.
     const deepBody = (deepR && deepR.body) || {};
-    const dbOk = !!(deepR && deepR.ok && deepBody.status === 'ok');
-    if (dbOk) {
+    if (deepR && deepR.ok && deepBody.status === 'ok') {
       cur.push(wasSide.eDb, 'n-dbvip', 'e-vip-writer', 'n-writer');
       sCur.push('DB ' + ((db && db.db_target) || '?'));
+    } else if (isDenied(deepR)) {
+      // ACL 에 막혀 못 봤다. DB 가 죽은 것과 구분한다.
+      sDenied.push('/health/deep (HEALTH_ALLOW)');
     } else {
       fail.push(wasSide.eDb, 'e-vip-writer', 'n-dbvip', 'n-writer');
       sFail.push('WAS → DB writer 도달 실패' + (deepBody.reason ? ` (${deepBody.reason})` : ''));
@@ -369,8 +383,12 @@ function renderPathMap(infoR, layers) {
    *    보고할 일이 아니다. 여기를 빨갛게 칠하면 멀쩡한 DC 를 죽었다고 보고한다. */
   const cvHost = (cvR && cvR.ok && cvR.body && cvR.body.was_host) || null;
   if (!cross && !direct && !cvHost) {
-    fail.push(me.eCross, other.was);
-    sFail.push('backup 멤버 무응답 — 지금 로컬 WAS 가 죽으면 흡수할 곳이 없다');
+    if (isDenied(cvR)) {
+      sDenied.push('/checkvs/ (ADMIN_ALLOW)');
+    } else {
+      fail.push(me.eCross, other.was);
+      sFail.push('backup 멤버 무응답 — 지금 로컬 WAS 가 죽으면 흡수할 곳이 없다');
+    }
   }
 
   const otherDc  = left ? 'DC-400' : 'DC-500';
@@ -405,10 +423,12 @@ function renderPathMap(infoR, layers) {
         : 'rw · semi=' + ((db.semi_sync && db.semi_sync.Rpl_semi_sync_master_status) || '?'));
 
   const legend = $('#mapLegend');
-  legend.className = 'banner ' + (sFail.length ? 'fail' : 'ok');
+  legend.className = 'banner ' + (sFail.length ? 'fail' : (sDenied.length ? 'warn' : 'ok'));
   legend.replaceChildren();
   legend.appendChild(el('div', 'curline', '현재  ' + (sCur.join('  →  ') || '판정 불가')));
-  if (sFail.length) legend.appendChild(el('div', 'failline', '실패  ' + sFail.join(' / ')));
+  if (sFail.length)   legend.appendChild(el('div', 'failline', '실패  ' + sFail.join(' / ')));
+  if (sDenied.length) legend.appendChild(el('div', 'denyline',
+    '권한 없음  ' + sDenied.join(' / ') + ' — 막힌 것이 아니라 못 본 것이다'));
   track('pathmap', (sFail.length ? 'FAIL:' + sFail.length : 'OK') + '/' + sCur.join('>'), '활성 경로');
 }
 
