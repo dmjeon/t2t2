@@ -72,8 +72,16 @@ gen_acl "${HEALTH_ALLOW}" "${ROOT}/nginx/conf.d/acl-health.inc" \
         /etc/nginx/conf.d/acl-health.inc "__HEALTH_ALLOW_LINES__"
 kv "ADMIN_ALLOW"  "${ADMIN_ALLOW}"
 kv "HEALTH_ALLOW" "${HEALTH_ALLOW}"
-msg "검증 화면은 DB writer 신원과 semi-sync 상태를 노출한다. 관리 대역만 허용." \
-    "The verification page exposes DB writer identity and semi-sync state."
+
+# basic 인증 — IP 목록과 OR 조건(satisfy any).
+# 앞단이 SNAT 를 하면 nginx 는 고객 IP 를 못 보므로 IP 만으로는 들어올 수 없다.
+printf '%s:%s\n' "${ADMIN_USER}" "$(openssl passwd -apr1 "${ADMIN_PASS}")" \
+  > /etc/nginx/.htpasswd
+chmod 0640 /etc/nginx/.htpasswd
+chown root:nginx /etc/nginx/.htpasswd
+kv "basic auth user" "${ADMIN_USER}   (/etc/nginx/.htpasswd)"
+msg "IP 가 안 맞아도 이 계정으로 들어올 수 있다 (satisfy any)." \
+    "If the source IP does not match, this account still gets you in."
 
 step "검증 화면" "Verification page"
 install -d -m 0755 /usr/share/nginx/html/aadc
@@ -116,8 +124,15 @@ for p in /api/info /health/deep /health/local /api/db/status /; do
   code=$(curl -so /dev/null -w '%{http_code}' -m 6 "http://127.0.0.1${p}")
   printf '   %-20s %s\n' "${p}" "${code}"
 done
-msg "127.0.0.1 은 ADMIN_ALLOW/HEALTH_ALLOW 안에 있다. 403 이 나오면 ACL 이 틀린 것." \
+msg "127.0.0.1 은 ADMIN_ALLOW/HEALTH_ALLOW 안에 있다. 403 이면 ACL 이 틀린 것." \
     "127.0.0.1 is inside both allow lists - a 403 here means the ACLs are wrong."
+say ""
+msg "밖에서 403 이 나오면 앞단 SNAT 때문이다. nginx 가 본 주소를 확인할 것:" \
+    "A 403 from outside means front-end SNAT. Check what nginx actually saw:"
+say "curl -s http://<이 서버의 공인 IP>/health/web"
+say "  raw=앞단 장비 주소 + xff 비어 있음  ->  IP ACL 로는 통과 불가"
+say "  그 경우 basic 인증으로 들어간다 / then use basic auth:"
+say "  curl -u ${ADMIN_USER} http://<공인 IP>/"
 
 IP4="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat <<NEXT

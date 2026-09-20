@@ -91,10 +91,19 @@ server {
 
     # ----- /health/web : nginx 자체 생존 (L4·WAS 와 무관) ---------------------
     # WEB 계층만 떼어 보고 싶을 때 쓴다. GSLB 는 쓰지 않는다.
+    #
+    # ★ 접근 제어를 걸지 않는 유일한 진단 경로다. 그래서 "왜 다른 데가 403 인가"를
+    #   여기서 알아낸다. 세 값의 의미:
+    #     raw    real_ip 적용 전, nginx 가 실제로 본 TCP 소스 주소
+    #     client real_ip 적용 후 — ACL(allow/deny)이 판정에 쓰는 값
+    #     xff    앞단이 넣어 준 X-Forwarded-For (비어 있으면 안 넣어 준 것)
+    #
+    #   raw 가 FortiGate/FortiADC 주소이고 xff 가 비어 있으면, 고객 IP 가
+    #   서버에 도달하기 전에 이미 소실된 것이다 — 서버에서 못 고친다 (5-2절 R5).
     location = /health/web {
         access_log off;
         add_header Content-Type application/json;
-        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr"}';
+        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr","client":"$remote_addr","raw":"$realip_remote_addr","xff":"$http_x_forwarded_for"}';
     }
 
     # ----- 점검 전용 VS (backup 멤버 검증, C13) ------------------------------
