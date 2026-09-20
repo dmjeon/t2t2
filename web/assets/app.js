@@ -19,7 +19,17 @@ async function probe(url, opts = {}) {
     const res = await fetch(url, { cache: 'no-store', ...opts });
     const ms = Math.round(performance.now() - t0);
     let body = null;
-    try { body = await res.json(); } catch { body = { raw: await res.text().catch(() => '') }; }
+    try {
+      body = await res.json();
+    } catch {
+      // JSON 이 아니면 대개 nginx 가 만든 에러 페이지다. 통째로 들고 다니면
+      // 배너가 HTML 로 도배되므로 요약만 남긴다.
+      const txt = await res.text().catch(() => '');
+      body = /^\s*</.test(txt)
+        ? { raw: '(HTML error page)', bytes: txt.length }
+        : { raw: txt.slice(0, 200) };
+    }
+    if (body === null || typeof body !== 'object') body = { value: body };
     return { ok: res.ok, status: res.status, ms, body };
   } catch (e) {
     return { ok: false, status: 0, ms: Math.round(performance.now() - t0),
@@ -48,8 +58,17 @@ function renderPath(r) {
 
   if (!r.ok) {
     banner.className = 'banner fail';
-    banner.textContent = `경로 확인 실패 — HTTP ${r.status} ${JSON.stringify(r.body)}`;
-    track('path', 'FAIL', '요청 경로');
+    // 상태 코드가 곧 어느 계층이 끊겼는지를 말해 준다. 그래서 그대로 보여 준다.
+    const hint = {
+      502: '로컬 L4 VIP 에 닿지 못했다. L4 미기동 / VIP 주소 오기입 / SELinux 순으로 볼 것.',
+      504: 'L4 는 응답했으나 WAS 가 시간 안에 답하지 않았다.',
+      403: '접근 제어에 막혔다. ADMIN_ALLOW 에 없고 basic 인증도 안 된 상태다.',
+      404: '경로가 없다. nginx location 설정을 볼 것.',
+      0:   '네트워크 또는 CORS 문제로 요청 자체가 실패했다.',
+    }[r.status] || '';
+    banner.textContent =
+      `경로 확인 실패 — HTTP ${r.status}${hint ? '  ·  ' + hint : ''}`;
+    track('path', 'FAIL/' + r.status, '요청 경로');
     return;
   }
   const b = r.body;
@@ -83,7 +102,9 @@ function renderPath(r) {
 const LAYERS = [
   { id: 'web',   name: 'WEB (nginx)', url: '/health/web',
     desc: '1:1 구조에서 유일하게 흡수 주체가 없는 계층. 죽으면 GSLB 전환뿐이다.',
-    detail: (b) => `${b.web_host || '?'} ${b.web_addr || ''}` },
+    detail: (b) => `${b.web_host || '?'} ${b.web_addr || ''}`
+                 + (b.upstream_mode ? `  ->  ${b.upstream_target || '?'} (${b.upstream_mode})` : ''),
+    after: (b) => showBypass(b) },
 
   { id: 'deep',  name: '/health/deep', url: '/health/deep',
     desc: 'GSLB 가 보는 것. 실트래픽과 같은 경로(로컬 L4 VIP)를 탄다.',
@@ -101,10 +122,19 @@ const LAYERS = [
 
   { id: 'db',    name: 'DB writer', url: '/api/db/status',
     desc: 'semi-sync 가 OFF 면 RPO 가 깨진 채로 조용히 돌고 있는 것이다.',
-    detail: (b) => b.writer
-      ? `${b.writer.hostname} ro=${b.writer.read_only} semi=${b.semi_sync && b.semi_sync.Rpl_semi_sync_master_status || '?'}`
-      : JSON.stringify(b).slice(0, 80),
-    grade: (r) => !r.ok ? 'fail' : (r.body.rpo_zero ? 'ok' : 'warn') },
+    detail: (b) => {
+      if (!b || !b.writer) return JSON.stringify(b || {}).slice(0, 80);
+      if (b.temporary_backend) return `sqlite  ${b.db_target || ''}  (임시 · 공유 DB 아님)`;
+      const semi = (b.semi_sync && b.semi_sync.Rpl_semi_sync_master_status) || '?';
+      return `${b.writer.hostname} ro=${b.writer.read_only} semi=${semi}`;
+    },
+    // sqlite 는 항상 warn 이다. 초록으로 두면 "DB 계층이 검증됐다"로 읽힌다.
+    grade: (r) => {
+      if (!r.ok) return 'fail';
+      if (r.body && r.body.temporary_backend) return 'warn';
+      return (r.body && r.body.rpo_zero) ? 'ok' : 'warn';
+    },
+    after: (b) => showSqlite(b) },
 
   { id: 'peer',  name: '반대편 DC', url: '/peer/health/deep',
     desc: 'GSLB 가 넘길 수 있는 곳이 살아 있는가. 죽어 있으면 전환 카드가 없다.',
@@ -113,33 +143,99 @@ const LAYERS = [
       : `${b.reason || b.error || 'fail'}` },
 ];
 
+/* 카드 하나를 그린다. 여기서 던지는 예외는 호출자가 잡아 카드 하나만 망가뜨린다.
+ *
+ * 이 함수가 분리돼 있는 이유: 예전 구현은 6개를 한 루프에서 그려서, 두 번째
+ * 카드에서 예외가 나면 나머지 4개가 통째로 사라졌다. 화면에는 첫 카드만 남고
+ * 아무 설명도 없었다. 진단 화면에서 그건 최악의 실패 방식이다 —
+ * "무엇이 고장났는지" 대신 "화면이 고장났다"를 보게 된다. */
+function renderLayerCard(L, r) {
+  const grade = L.grade ? L.grade(r) : (r.ok ? 'ok' : 'fail');
+
+  const card = el('div', 'layer ' + grade);
+  const name = el('div', 'name');
+  name.appendChild(el('span', 'dot ' + grade));
+  name.appendChild(el('span', null, L.name));
+  name.appendChild(el('span', 'ms', `${r.status || '-'} · ${r.ms}ms`));
+  card.appendChild(name);
+  card.appendChild(el('div', 'desc', L.desc));
+
+  let det = '';
+  try { det = L.detail(r.body || {}) || ''; } catch (e) { det = `detail error: ${e.message}`; }
+  card.appendChild(el('div', 'det', det));
+
+  // 카드가 자기 말고 다른 것도 갱신해야 할 때 (예: L4 우회 배너)
+  if (L.after) { try { L.after(r.body || {}); } catch (e) { /* 카드는 그대로 둔다 */ } }
+
+  return { card, grade };
+}
+
+/* L4 우회 배너. /health/web 이 upstream_mode 를 알려 준다.
+ * 우회 상태를 화면 맨 위에 계속 띄워 두는 것이 목적이다 —
+ * 임시 구성은 잊히고, 잊힌 임시 구성은 본설계로 둔갑한다. */
+function showBypass(b) {
+  const card = $('#bypassCard');
+  if (!card) return;
+  if (b && b.upstream_mode === 'direct') {
+    card.style.display = '';
+    $('#bypassBanner').textContent =
+      `WEB → ${b.upstream_target || '?'} (로컬 WAS 직결). 내부 L4 를 거치지 않는다.`;
+    track('upstream', 'direct', '업스트림 모드');
+  } else {
+    card.style.display = 'none';
+    if (b && b.upstream_mode) track('upstream', b.upstream_mode, '업스트림 모드');
+  }
+}
+
+/* SQLite 임시 백엔드 배너. L4 우회와 같은 이유로 화면 위에 계속 띄운다. */
+function showSqlite(b) {
+  const card = $('#sqliteCard');
+  if (!card) return;
+  if (b && b.temporary_backend) {
+    card.style.display = '';
+    $('#sqliteBanner').textContent =
+      `${b.db_target || 'local file'} — WAS 로컬 SQLite. DB 서버·VIP·복제가 존재하지 않는다.`;
+    track('dbmode', 'sqlite', 'DB 백엔드');
+  } else {
+    card.style.display = 'none';
+    if (b && b.backend) track('dbmode', b.backend, 'DB 백엔드');
+  }
+}
+
+function renderBrokenCard(L, err) {
+  const card = el('div', 'layer fail');
+  const name = el('div', 'name');
+  name.appendChild(el('span', 'dot fail'));
+  name.appendChild(el('span', null, L.name));
+  name.appendChild(el('span', 'ms', 'render error'));
+  card.appendChild(name);
+  card.appendChild(el('div', 'desc', L.desc));
+  card.appendChild(el('div', 'det', `${err && err.name}: ${err && err.message}`));
+  return card;
+}
+
 async function refreshLayers() {
   const box = $('#layers');
   const results = await Promise.all(LAYERS.map((L) => probe(L.url)));
   box.replaceChildren();
 
   let worst = 'ok';
-  results.forEach((r, i) => {
+  for (let i = 0; i < LAYERS.length; i++) {
     const L = LAYERS[i];
-    let grade = L.grade ? L.grade(r) : (r.ok ? 'ok' : 'fail');
-    if (grade === 'fail') worst = 'fail';
-    else if (grade === 'warn' && worst !== 'fail') worst = 'warn';
-
-    track(L.id, grade.toUpperCase() + '/' + r.status, L.name);
-
-    const card = el('div', 'layer ' + grade);
-    const name = el('div', 'name');
-    name.appendChild(el('span', 'dot ' + grade));
-    name.appendChild(el('span', null, L.name));
-    const ms = el('span', 'ms', `${r.status || '-'} · ${r.ms}ms`);
-    name.appendChild(ms);
-    card.appendChild(name);
-    card.appendChild(el('div', 'desc', L.desc));
-    let det = '';
-    try { det = L.detail(r.body || {}) || ''; } catch { det = ''; }
-    card.appendChild(el('div', 'det', det));
-    box.appendChild(card);
-  });
+    const r = results[i];
+    try {
+      const { card, grade } = renderLayerCard(L, r);
+      if (grade === 'fail') worst = 'fail';
+      else if (grade === 'warn' && worst !== 'fail') worst = 'warn';
+      track(L.id, String(grade).toUpperCase() + '/' + r.status, L.name);
+      box.appendChild(card);
+    } catch (e) {
+      // 카드 하나가 깨져도 나머지는 계속 그린다.
+      worst = 'fail';
+      box.appendChild(renderBrokenCard(L, e));
+      logEvent(`카드 렌더 실패 [${L.id}] ${e && e.name}: ${e && e.message}`);
+    }
+  }
 
   $('#overallDot').className = 'dot ' + worst;
 }
@@ -268,6 +364,15 @@ $('#writeBtn').addEventListener('click', doWrite);
 $('#readBtn').addEventListener('click', doRead);
 $('#clearLog').addEventListener('click', () => { $('#eventLog').textContent = ''; });
 
+/* 조용히 죽지 않게 한다. 진단 화면이 아무 말 없이 멈추는 것이 최악이다. */
+window.addEventListener('error', (e) => {
+  logEvent(`JS 오류: ${e.message}  (${e.filename}:${e.lineno})`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  logEvent(`처리되지 않은 오류: ${(r && (r.stack || r.message)) || r}`);
+});
+
 logEvent('검증 화면 시작');
-refreshAll();
+refreshAll().catch((e) => logEvent(`refreshAll 실패: ${e && e.message}`));
 setAuto(true);

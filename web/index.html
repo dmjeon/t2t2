@@ -20,6 +20,56 @@
 
 <main>
 
+<!-- L4 우회 중일 때만 나타난다. 임시 구성을 잊지 않게 하는 것이 목적이다. -->
+<section class="card wide" id="bypassCard" style="display:none">
+  <h2>⚠ 임시 구성 — L4 우회 중</h2>
+  <div class="banner warn" id="bypassBanner"></div>
+  <p class="hint">
+    WEB 이 내부 L4 를 건너뛰고 로컬 WAS 를 직접 호출하고 있다.
+    서비스는 동작하지만 <b>아래 항목은 검증된 것이 아니다.</b> 되는 것처럼 보여도 아니다.
+  </p>
+  <table class="tbl show">
+    <thead><tr><th>항목</th><th>왜 검증이 안 되는가</th></tr></thead>
+    <tbody>
+      <tr><td>C12 Full NAT(SNAT)</td><td>L4 를 안 거치니 SNAT 자체가 일어나지 않는다</td></tr>
+      <tr><td>C15 backup 멤버 흡수</td><td><b>WAS 1대가 죽으면 흡수 주체가 없다 → 곧 DC 장애</b></td></tr>
+      <tr><td>C18 L4 장비 장애 감지</td><td>deep check 를 두는 유일한 단독 근거가 사라진다</td></tr>
+      <tr><td>5-1 경유 DC 판정</td><td><code>via_l4</code> 가 L4 가 아니라 WEB 주소다</td></tr>
+    </tbody>
+  </table>
+  <p class="hint">
+    내부 L4 FortiADC 가 올라오면 <code>config.env</code> 의
+    <code>UPSTREAM_MODE=l4</code> 로 되돌리고 <code>30-web.sh</code> 를 다시 돌린 뒤
+    위 4개를 반드시 다시 확인한다.
+  </p>
+</section>
+
+<!-- DB 가 sqlite 일 때만 나타난다. -->
+<section class="card wide" id="sqliteCard" style="display:none">
+  <h2>⚠ 임시 구성 — DB 가 SQLite</h2>
+  <div class="banner warn" id="sqliteBanner"></div>
+  <p class="hint">
+    DB 서버에 아직 접근할 수 없어 WAS 로컬 파일을 쓰고 있다.
+    <b>공유 DB 가 아니다 — 두 WAS 가 서로 다른 데이터를 본다.</b>
+    한쪽에 쓴 값이 다른 쪽에서 보이지 않는 것이 정상이다.
+  </p>
+  <table class="tbl show">
+    <thead><tr><th>항목</th><th>왜 검증이 안 되는가</th></tr></thead>
+    <tbody>
+      <tr><td>/health/deep 의 writer 도달 확인</td>
+          <td>로컬 파일은 <b>언제나</b> 도달한다. 초록불이 아무것도 증명하지 않는다</td></tr>
+      <tr><td>C8 DCI 단절 → DC-400 이탈</td>
+          <td>위 확인에 의존한다. DCI 가 끊겨도 DC-400 은 멀쩡해 보인다</td></tr>
+      <tr><td>C3~C7 DB 전환</td><td>keepalived · VIP · 복제가 존재하지 않는다</td></tr>
+      <tr><td>semi-sync / RPO / 복제 지연</td><td>SQLite 에는 복제가 없다</td></tr>
+    </tbody>
+  </table>
+  <p class="hint">
+    DB 서버가 열리면 <code>config.env</code> 의 <code>DB_MODE=mariadb</code> 로
+    되돌리고 <code>20-was.sh</code> 를 다시 돌린 뒤 위 항목을 다시 확인한다.
+  </p>
+</section>
+
 <!-- ===================================================================== -->
 <section class="card wide">
   <h2>1. 내 요청은 어느 경로로 갔는가</h2>

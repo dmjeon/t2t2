@@ -37,29 +37,36 @@ def _cached(key: str, fn):
 
 
 def _probe_writer() -> dict:
-    """지금 접속 대상(AADC_DB_HOST)의 writer 에 실제로 닿는가."""
+    """지금 접속 대상의 writer 에 실제로 닿는가."""
     t0 = time.perf_counter()
-    row = db.query_one(
-        "SELECT @@hostname AS hostname, @@server_id AS server_id, "
-        "@@global.read_only AS read_only"
-    )
+    w = db.writer_identity()
+
     detail = {
-        "writer_hostname": row["hostname"],
-        "writer_server_id": row["server_id"],
-        "writer_read_only": int(row["read_only"]),
+        "backend": w["backend"],
+        "db_target": db.target(),
+        "writer_hostname": w["hostname"],
+        "writer_server_id": w["server_id"],
+        "writer_read_only": w["read_only"],
     }
 
     # read_only=1 인 노드가 writer 로 잡혀 있으면 쓰기는 전부 실패한다.
     # 도달만 확인하고 넘어가면 이 상태를 놓친다.
-    if int(row["read_only"]) != 0:
+    if int(w["read_only"]) != 0:
         raise RuntimeError("writer is read_only")
 
+    if w.get("temporary"):
+        # sqlite 는 로컬 파일이라 언제나 성공한다. 이 200 은 DB 계층이
+        # 검증됐다는 뜻이 **아니다**. 응답에 그렇게 적어 둔다.
+        detail["temporary_backend"] = True
+        detail["not_verified"] = [
+            "writer reachability (local file always reachable)",
+            "C8 DCI cut -> DC-400 self-withdrawal",
+            "C3-C7 DB failover",
+            "semi-sync / RPO / replication lag",
+        ]
+
     if settings.deep_writer_probe == "write":
-        db.execute(
-            "INSERT INTO health_probe (node, dc) VALUES (%s, %s) "
-            "ON DUPLICATE KEY UPDATE probed_at = CURRENT_TIMESTAMP(3), n = n + 1",
-            (settings.node, settings.dc),
-        )
+        db.upsert_health_probe(settings.node, settings.dc)
         detail["write_probe"] = "ok"
 
     detail["writer_rtt_ms"] = round((time.perf_counter() - t0) * 1000, 2)

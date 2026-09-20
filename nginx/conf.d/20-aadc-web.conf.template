@@ -103,7 +103,7 @@ server {
     location = /health/web {
         access_log off;
         add_header Content-Type application/json;
-        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr","client":"$remote_addr","raw":"$realip_remote_addr","xff":"$http_x_forwarded_for"}';
+        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr","client":"$remote_addr","raw":"$realip_remote_addr","xff":"$http_x_forwarded_for","upstream_mode":"__UPSTREAM_MODE__","upstream_target":"__UPSTREAM_TARGET__"}';
     }
 
     # ----- 점검 전용 VS (backup 멤버 검증, C13) ------------------------------

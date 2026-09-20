@@ -27,6 +27,19 @@ class Settings:
     l4_prefix_dc500 = os.getenv("AADC_L4_PREFIX_DC500", "10.3.20.")
     l4_prefix_dc400 = os.getenv("AADC_L4_PREFIX_DC400", "10.7.20.")
 
+    # L4 우회(direct) 모드에서는 클라이언트가 L4 가 아니라 WEB 자신이다.
+    # 그 경우를 "알 수 없음"으로 뭉뚱그리지 않고 명시적으로 구분한다 —
+    # 우회 중이라는 사실 자체가 검증 결과를 해석할 때 가장 중요한 정보다.
+    web_prefix_dc500 = os.getenv("AADC_WEB_PREFIX_DC500", "10.3.11.")
+    web_prefix_dc400 = os.getenv("AADC_WEB_PREFIX_DC400", "10.7.11.")
+
+    # mariadb | sqlite
+    #   mariadb  본설계. DB VIP 직결.
+    #   sqlite   임시. DB 서버에 접근할 수 없는 동안 WAS 로컬 파일로 대신한다.
+    #            ★ 공유 DB 가 아니다. 두 WAS 가 서로 다른 데이터를 본다.
+    db_mode = os.getenv("AADC_DB_MODE", "mariadb").lower()
+    sqlite_path = os.getenv("AADC_SQLITE_PATH", "/opt/aadc/data/aadc.sqlite")
+
     # DB VIP 에 직접 붙는다 (AADC-POC.md 3-4절). 평시 10.3.31.50, DR 전환 시
     # 사람이 was.env 를 고쳐 10.7.31.52 로 바꾸고 앱을 재시작한다.
     db_host = os.getenv("AADC_DB_HOST", "10.3.31.50")

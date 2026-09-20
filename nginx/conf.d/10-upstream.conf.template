@@ -2,29 +2,38 @@
 # 업스트림 — install/30-web.sh 가 __PLACEHOLDER__ 를 config.env 값으로 치환해
 #            /etc/nginx/conf.d/10-upstream.conf 로 설치한다.
 #
-# ★ WEB 은 로컬 L4 VIP **하나만** 호출한다. WAS 선택에 관여하지 않는다.
-#   교차(backup) 멤버로 넘길지 말지는 전적으로 L4 가 정한다.
+# 현재 모드: __UPSTREAM_MODE__
+#
+# ★ 본설계(l4)에서 WEB 은 로컬 L4 VIP **하나만** 호출한다. WAS 선택에 관여하지
+#   않는다. 교차(backup) 멤버로 넘길지 말지는 전적으로 L4 가 정한다.
 #   그래서 WAS 장애가 GSLB 전환으로 번지지 않는다 (AADC-POC.md 1절 원칙).
+#
+#   direct 모드는 그 L4 를 통째로 건너뛴다. WEB 이 로컬 WAS 하나만 보게 되므로
+#   **WAS 장애를 흡수할 주체가 사라진다.** 임시 구성이라는 뜻이 그것이다.
 # =============================================================================
 
 upstream was_pool {
-    server __L4_VIP__:8000 max_fails=2 fail_timeout=5s;
+    server __UPSTREAM_TARGET__ max_fails=2 fail_timeout=5s;
     keepalive 32;
 }
 
-# /health/local 전용 — L4 를 우회해 **로컬 WAS 를 직접** 본다.
+# /health/local 전용 — 언제나 **로컬 WAS 를 직접** 본다.
 # 실패 = "backup 으로 넘어가 있다" = 사람이 WAS 를 고쳐야 한다는 신호.
 # GSLB 는 이 경로를 보지 않는다 (AADC-POC.md 4절).
+#
+# direct 모드에서는 was_pool 과 같은 곳을 가리키게 되어 deep 과 local 이
+# 사실상 같은 것을 본다. 두 신호를 분리한 의미가 없어진다 — 임시 구성의 대가다.
 upstream was_local_direct {
     server __WAS_LOCAL_IP__:8000 max_fails=0;
     keepalive 4;
 }
 
-# 교차(backup) 멤버만 담은 점검 전용 가상 서버 (AADC-POC.md 3-3절).
-# backup 멤버는 평시 트래픽이 0 이라 검증되지 않는다. 장애 순간에야
-# 동작 여부를 알게 되는 것을 막으려고 둔다. C13 판정에 쓴다.
+# 교차(backup) 멤버 점검 (AADC-POC.md 3-3절).
+#   l4     모드: 교차 멤버만 담은 점검 전용 가상 서버
+#   direct 모드: 반대편 WAS 를 직접 — L4 는 못 보지만 peer-routing 도달성은
+#                여전히 검증된다 (R1/R2). 그것만으로도 둘 데 값이 있다.
 upstream was_check_vs {
-    server __CHECK_VS_VIP__:8000 max_fails=0;
+    server __CHECK_TARGET__ max_fails=0;
 }
 
 # 반대편 DC 의 WEB — 검증 화면이 양쪽을 나란히 보여 주기 위한 경유로.

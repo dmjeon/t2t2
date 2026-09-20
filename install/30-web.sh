@@ -13,11 +13,43 @@ require_role 'WEB-*'
 resolve_dc_vars
 
 banner "WEB 계층 (nginx)" "WEB tier (nginx)"
-kv "local L4 VIP"  "${L4_VIP}"
+
+# ----- 업스트림 모드 ---------------------------------------------------------
+case "${UPSTREAM_MODE:-l4}" in
+  l4)
+    UPSTREAM_TARGET="${L4_VIP}:${L4_PORT}"
+    CHECK_TARGET="${CHECK_VS}:${L4_PORT}"
+    ;;
+  direct)
+    # L4 를 건너뛴다. 교차 점검은 반대편 WAS 를 직접 때려 peer-routing 도달성만
+    # 확인한다 — L4 backup 동작은 이 모드에서 검증할 수 없다.
+    UPSTREAM_TARGET="${WAS_LOCAL}:${APP_PORT}"
+    if [ "${AADC_DC}" = "DC-500" ]; then
+      CHECK_TARGET="${WAS_DC400_IP}:${APP_PORT}"
+    else
+      CHECK_TARGET="${WAS_DC500_IP}:${APP_PORT}"
+    fi
+    ;;
+  *) die "UPSTREAM_MODE 는 l4 또는 direct" "UPSTREAM_MODE must be l4 or direct (got '${UPSTREAM_MODE}')" ;;
+esac
+
+kv "upstream mode" "${UPSTREAM_MODE}"
+kv "upstream target" "${UPSTREAM_TARGET}"
+kv "local L4 VIP"  "${L4_VIP}   $( [ "${UPSTREAM_MODE}" = direct ] && echo '(BYPASSED)' )"
 kv "local WAS"     "${WAS_LOCAL}   (/health/local direct target)"
-kv "check VS"      "${CHECK_VS}"
+kv "check target"  "${CHECK_TARGET}"
 kv "peer WEB"      "${PEER_WEB}"
-kv "server_name"              "${SERVICE_FQDN} ${WEB_FQDN}"
+kv "server_name"   "${SERVICE_FQDN} ${WEB_FQDN}"
+
+if [ "${UPSTREAM_MODE}" = "direct" ]; then
+  echo
+  msg "★ L4 우회 모드다. 본설계가 아니다." \
+      "   L4 IS BYPASSED. This is not the real design."
+  msg "  이 모드에서 검증되지 않는 것: C12(SNAT) C15(backup 흡수) C18(L4 장애)" \
+      "  Not verified in this mode: C12 (SNAT), C15 (backup), C18 (L4 failure)"
+  msg "  WAS 1대가 죽으면 흡수 주체가 없다 — 그게 곧 DC 장애가 된다." \
+      "  With one WAS down nothing absorbs it; that becomes a DC outage."
+fi
 
 step "nginx 설치" "Install nginx"
 dnf -y install nginx >/dev/null
@@ -35,14 +67,17 @@ if [ -f /etc/nginx/conf.d/default.conf ]; then
       "Moved the stock default.conf aside (server_name clash)."
 fi
 
-sed -e "s/__L4_VIP__/${L4_VIP}/g" \
+sed -e "s/__UPSTREAM_TARGET__/${UPSTREAM_TARGET}/g" \
+    -e "s/__CHECK_TARGET__/${CHECK_TARGET}/g" \
+    -e "s/__UPSTREAM_MODE__/${UPSTREAM_MODE}/g" \
     -e "s/__WAS_LOCAL_IP__/${WAS_LOCAL}/g" \
-    -e "s/__CHECK_VS_VIP__/${CHECK_VS}/g" \
     -e "s/__PEER_WEB_IP__/${PEER_WEB}/g" \
     "${ROOT}/nginx/conf.d/10-upstream.conf.template" > /etc/nginx/conf.d/10-upstream.conf
 
 sed -e "s/__SERVICE_FQDN__/${SERVICE_FQDN}/g" \
     -e "s/__WEB_FQDN__/${WEB_FQDN}/g" \
+    -e "s/__UPSTREAM_MODE__/${UPSTREAM_MODE}/g" \
+    -e "s#__UPSTREAM_TARGET__#${UPSTREAM_TARGET}#g" \
     "${ROOT}/nginx/conf.d/20-aadc-web.conf.template" > /etc/nginx/conf.d/20-aadc-web.conf
 
 # set_real_ip_from 을 config.env 의 FortiADC 주소로 맞춘다.

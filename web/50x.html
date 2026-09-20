@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>502 — upstream unavailable</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<main style="display:block; max-width:760px;">
+  <section class="card wide">
+    <h2>상단 계층에 도달하지 못했다 &nbsp;|&nbsp; Upstream unavailable</h2>
+
+    <div class="banner fail">
+      이 WEB 서버는 살아 있다. 그 위(L4 → WAS → DB) 어딘가가 응답하지 않는다.<br>
+      This WEB server is alive. Something above it (L4 &rarr; WAS &rarr; DB) did not answer.
+    </div>
+
+    <p class="hint">
+      이 페이지가 보이는 것 자체가 정보다. nginx 는 정상이고, 문제는 업스트림 구간에 있다.
+      상태 코드를 200 으로 덮지 않는 이유가 그것이다 — 실패를 정확하게 드러내는 쪽이
+      전환보다 낫다 (AADC-POC.md 5-3절).
+    </p>
+
+    <h2 style="margin-top:18px">확인 순서 &nbsp;|&nbsp; Check in this order</h2>
+    <table class="tbl show">
+      <thead><tr><th>#</th><th>확인 / check</th><th>방법 / how</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>WEB 계층은 정상인가<br>is the WEB tier fine</td>
+            <td>/health/web &nbsp;— 이 경로는 접근 제어도 업스트림도 없다</td></tr>
+        <tr><td>2</td><td>내부 L4 가 떠 있는가<br>is the internal L4 up</td>
+            <td>L4 FortiADC 전원 · 가상 서버 상태</td></tr>
+        <tr><td>3</td><td>L4 VIP 주소가 맞는가<br>is the L4 VIP correct</td>
+            <td>config.env 의 DC500_L4_VIP / DC400_L4_VIP</td></tr>
+        <tr><td>4</td><td>WAS 가 살아 있는가<br>is the WAS alive</td>
+            <td>systemctl status aadc-was</td></tr>
+        <tr><td>5</td><td>SELinux<br></td>
+            <td>getsebool httpd_can_network_connect</td></tr>
+      </tbody>
+    </table>
+
+    <p class="hint" style="margin-top:16px">
+      <a href="/health/web">/health/web</a> &nbsp;·&nbsp;
+      <a href="/">검증 화면 / verification page</a>
+    </p>
+  </section>
+</main>
+</body>
+</html>

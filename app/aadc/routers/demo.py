@@ -23,33 +23,24 @@ def db_status():
     semi-sync 가 async 로 강등되면 RPO 가 깨진 상태로 조용히 운영된다
     (AADC-POC.md 3-4절 안전장치 ⑤). 화면에서 바로 보이게 한다.
     """
-    row = db.query_one(
-        "SELECT @@hostname AS hostname, @@server_id AS server_id, "
-        "@@global.read_only AS read_only, @@version AS version"
-    )
-    status = {}
-    try:
-        for r in db.query_all(
-            "SHOW GLOBAL STATUS WHERE Variable_name IN "
-            "('Rpl_semi_sync_master_status','Rpl_semi_sync_master_clients',"
-            " 'Rpl_semi_sync_master_no_tx','Rpl_semi_sync_master_yes_tx',"
-            " 'Rpl_semi_sync_slave_status')"
-        ):
-            status[r["Variable_name"]] = r["Value"]
-    except Exception as exc:                      # noqa: BLE001
-        status["error"] = f"{type(exc).__name__}: {exc}"
-
+    w = db.writer_identity()
+    status = db.semi_sync_status()
     semi = status.get("Rpl_semi_sync_master_status")
+
     return {
+        "backend": w["backend"],
+        "db_target": db.target(),
+        # sqlite 면 true. 이 화면의 초록불이 DB 계층 검증을 뜻하지 않는다는 표시.
+        "temporary_backend": bool(w.get("temporary")),
         "writer": {
-            "hostname": row["hostname"],
-            "server_id": row["server_id"],
-            "read_only": int(row["read_only"]),
-            "version": row["version"],
+            "hostname": w["hostname"],
+            "server_id": w["server_id"],
+            "read_only": w["read_only"],
+            "version": w["version"],
         },
         "semi_sync": status,
-        # ON 이 아니면 RPO 0 이 아니다
-        "rpo_zero": semi == "ON",
+        # ON 이 아니면 RPO 0 이 아니다. sqlite 면 복제 자체가 없다.
+        "rpo_zero": (semi == "ON") if w["backend"] == "mariadb" else False,
         "seen_from": {"dc": settings.dc, "was_host": settings.node},
     }
 

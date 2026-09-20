@@ -12,7 +12,13 @@ require_bash
 require_role 'WAS-*'
 
 banner "WAS 계층 (FastAPI)" "WAS tier (FastAPI)"
-kv "DB target" "${DB_APP_TARGET}:${DB_PORT}"
+if [ "${DB_MODE}" = "sqlite" ]; then
+  kv "DB backend" "sqlite  (TEMPORARY - local file, not a shared DB)"
+  kv "DB target"  "${SQLITE_PATH}"
+else
+  kv "DB backend" "mariadb"
+  kv "DB target"  "${DB_APP_TARGET}:${DB_PORT}"
+fi
 kv "app version" "${APP_VERSION}"
 
 step "패키지" "Packages"
@@ -24,6 +30,9 @@ id -u "${APP_USER}" >/dev/null 2>&1 || useradd -r -s /sbin/nologin -d "${APP_DIR
 install -d -m 0755 -o "${APP_USER}" -g "${APP_USER}" "${APP_DIR}" "${APP_DIR}/app"
 rsync -a --delete "${ROOT}/app/aadc" "${APP_DIR}/app/"
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}/app"
+
+# sqlite 모드용 데이터 디렉터리. mariadb 모드에서는 비어 있을 뿐 해가 없다.
+install -d -m 0750 -o "${APP_USER}" -g "${APP_USER}" "$(dirname "${SQLITE_PATH}")"
 
 python3 -m venv "${APP_DIR}/venv"
 "${APP_DIR}/venv/bin/pip" install --quiet --upgrade pip
@@ -38,6 +47,11 @@ AADC_NODE=${AADC_ROLE}
 AADC_APP_VERSION=${APP_VERSION}
 AADC_L4_PREFIX_DC500=${L4_PREFIX_DC500}
 AADC_L4_PREFIX_DC400=${L4_PREFIX_DC400}
+# L4 우회(direct) 모드 판정용. 앞 홉이 WEB 이면 L4 를 건너뛴 것이다.
+AADC_WEB_PREFIX_DC500=${WEB_PREFIX_DC500}
+AADC_WEB_PREFIX_DC400=${WEB_PREFIX_DC400}
+AADC_DB_MODE=${DB_MODE}
+AADC_SQLITE_PATH=${SQLITE_PATH}
 AADC_DB_HOST=${DB_APP_TARGET}
 AADC_DB_PORT=${DB_PORT}
 AADC_DB_USER=${DB_APP_USER}
@@ -104,6 +118,12 @@ cat <<'NEXT'
     고치고 앱을 재시작한다. ../dr/README.md 참조.
     DR switchover is a manual two-stage gate; stage 1 edits this host's
     /etc/aadc/was.env and restarts the app. See ../dr/README.md.
+
+★ DB_MODE=sqlite 인 동안 / while DB_MODE=sqlite
+  공유 DB 가 아니다. 두 WAS 가 각자 다른 파일을 본다.
+  This is not a shared database - each WAS has its own file.
+  /health/deep 의 200 은 DB 계층이 검증됐다는 뜻이 아니다.
+  A 200 from /health/deep does NOT mean the DB tier was verified.
 
 나중에 / Later
   ../deploy/deploy-canary.sh <version>   카나리 배포 / canary deploy
