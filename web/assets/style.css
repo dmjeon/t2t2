@@ -9,6 +9,8 @@
   --warn:      #9a6700;
   --fail:      #cf222e;
   --code-bg:   #eef1f4;
+  --db:        #5a55a8;
+  --idle:      #8a9aa3;
   --radius:    10px;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,12 +25,14 @@
     --warn:    #d29922;
     --fail:    #f85149;
     --code-bg: #21262d;
+    --db:      #9c98e8;
+    --idle:    #7c8f99;
   }
 }
 :root[data-theme="dark"] {
   --bg:#0d1117; --surface:#161b22; --border:#30363d; --text:#e6edf3;
   --muted:#9198a1; --accent:#4f8cf5; --ok:#3fb950; --warn:#d29922;
-  --fail:#f85149; --code-bg:#21262d;
+  --fail:#f85149; --code-bg:#21262d; --db:#9c98e8; --idle:#7c8f99;
 }
 
 * { box-sizing: border-box; }
@@ -146,4 +150,58 @@ footer {
 @media (max-width: 760px) {
   main { grid-template-columns: 1fr; padding: 16px; }
   .brand h1 { font-size: 14px; }
+}
+
+/* =============================================================================
+ * 활성 경로도 (맨 위 패널)
+ *
+ * 그림은 자기 요청을 내지 않는다. 계층 카드가 이미 받아 온 응답을 그대로 쓴다.
+ * 그래서 "그림은 초록인데 카드는 빨강" 같은 어긋남이 생기지 않는다.
+ * ========================================================================== */
+.mapbox { overflow-x: auto; }
+#pathMap { display: block; width: 100%; min-width: 900px; height: auto; }
+
+#pathMap .panel-bg   { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+#pathMap .band       { fill: var(--code-bg); }
+#pathMap .panel-title{ font: 650 15px -apple-system, "Noto Sans KR", sans-serif; fill: var(--text); }
+#pathMap .panel-sub  { font: 400 11px ui-monospace, Menlo, monospace; fill: var(--muted); }
+#pathMap .band-label { font: 500 10.5px ui-monospace, Menlo, monospace; fill: var(--muted); text-anchor: middle; }
+
+#pathMap .nd        { fill: var(--surface); stroke: var(--text); stroke-width: 1.8; }
+#pathMap .nd.bad    { fill: var(--code-bg); }
+#pathMap .nd.vip    { stroke: var(--db); stroke-width: 2.2; }
+#pathMap .nd.bad    { stroke: var(--warn); stroke-width: 2.2; stroke-dasharray: 3.2 2.6; }
+#pathMap .nm        { font: 500 11.5px -apple-system, "Noto Sans KR", sans-serif; fill: var(--text); text-anchor: middle; }
+#pathMap .ni        { font: 400 10px ui-monospace, Menlo, monospace; fill: var(--muted); text-anchor: middle; }
+#pathMap .ni.warn   { fill: var(--warn); }
+
+#pathMap .e         { fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#pathMap .e.live    { stroke: var(--accent); }
+#pathMap .e.db      { stroke: var(--db); }
+#pathMap .e.idle    { stroke: var(--idle); stroke-dasharray: 6 4; }
+#pathMap .e.bypass  { stroke: var(--warn); stroke-dasharray: 7 4; }
+#pathMap .e.thin    { stroke: var(--border); stroke-width: 1.2; }
+#pathMap .e.dash    { stroke-dasharray: 4 4; }
+#pathMap .el        { font: 500 10px -apple-system, "Noto Sans KR", sans-serif; fill: var(--muted); }
+#pathMap .el.live   { fill: var(--accent); }
+#pathMap .el.db     { fill: var(--db); }
+#pathMap .el.warn   { fill: var(--warn); }
+#pathMap .mk-live   { fill: var(--accent); }
+#pathMap .mk-db     { fill: var(--db); }
+#pathMap .mk-idle   { fill: var(--idle); }
+#pathMap .mk-warn   { fill: var(--warn); }
+
+/* 평시에는 전부 흐리게 깔아 두고, 지금 살아 있는 홉만 켠다. */
+#pathMap g.n, #pathMap g.e-g { opacity: .16; transition: opacity .25s; }
+#pathMap g.n.on, #pathMap g.e-g.on { opacity: 1; }
+#pathMap g.n.on .nd { stroke-width: 2.6; }
+#pathMap .halo { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0; }
+#pathMap g.n.on .halo { opacity: 1; animation: aadcPulse 2.4s ease-out infinite; }
+#pathMap g.n.on.hot .halo { stroke: var(--warn); }
+#pathMap g.n.on.hot .nd   { stroke: var(--warn); stroke-dasharray: 3.2 2.6; }
+@keyframes aadcPulse { 0% { r: 14; opacity: .85; } 100% { r: 22; opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #pathMap g.n.on .halo { animation: none; opacity: .5; }
+  #pathMap g.n, #pathMap g.e-g { transition: none; }
 }

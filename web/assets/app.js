@@ -219,6 +219,9 @@ async function refreshLayers() {
   const results = await Promise.all(LAYERS.map((L) => probe(L.url)));
   box.replaceChildren();
 
+  // 경로도가 같은 응답을 쓴다. 그림이 자기 요청을 따로 내면 카드와 다른
+  // 순간을 보게 되고, 둘이 어긋나는 순간 진단 화면으로서 값이 없어진다.
+  const byId = {};
   let worst = 'ok';
   for (let i = 0; i < LAYERS.length; i++) {
     const L = LAYERS[i];
@@ -228,6 +231,7 @@ async function refreshLayers() {
       if (grade === 'fail') worst = 'fail';
       else if (grade === 'warn' && worst !== 'fail') worst = 'warn';
       track(L.id, String(grade).toUpperCase() + '/' + r.status, L.name);
+      byId[L.id] = r;
       box.appendChild(card);
     } catch (e) {
       // 카드 하나가 깨져도 나머지는 계속 그린다.
@@ -238,6 +242,110 @@ async function refreshLayers() {
   }
 
   $('#overallDot').className = 'dot ' + worst;
+  return byId;
+}
+
+/* ---------- 0. 활성 경로도 ---------- */
+/* 켤 홉을 고르는 규칙은 세 값이 전부다.
+ *   web_addr       — 이 화면을 내려준 WEB 이 어느 DC 인가        (좌/우)
+ *   upstream_mode  — VIP 경로(l4)인가 다이렉트(direct)인가        (가운데 갈래)
+ *   was_dc         — 실제로 처리한 WAS 가 어느 DC 인가            (교차 여부)
+ * 나머지는 라벨이다. 규칙을 늘리지 말 것 — 늘리는 순간 그림과 카드가 갈린다. */
+const MAP_IDS = {
+  left:  { gslb: 'n-gslb1', fg: 'n-fg1', web: 'n-web1', l4: 'n-l4vip1', fadc: 'n-fadc1a', was: 'n-was1',
+           eIn: 'e-inet-gslb1', eGf: 'e-gslb1-fg1', eFw: 'e-fg1-web1',
+           eWl: 'e-web1-l4', eLw: 'e-l4-was1', eDirect: 'e-web1-direct',
+           eFadc: 'e-fadc1a-vip', eCross: 'e-l4a-was2', eDb: 'e-was1-db' },
+  right: { gslb: 'n-gslb2', fg: 'n-fg2', web: 'n-web2', l4: 'n-l4vip2', fadc: 'n-fadc2a', was: 'n-was2',
+           eIn: 'e-inet-gslb2', eGf: 'e-gslb2-fg2', eFw: 'e-fg2-web2',
+           eWl: 'e-web2-l4', eLw: 'e-l4-was2', eDirect: 'e-web2-direct',
+           eFadc: 'e-fadc2a-vip', eCross: 'e-l4b-was1', eDb: 'e-was2-db' },
+};
+
+function mapText(id, txt, warn) {
+  const t = document.getElementById(id);
+  if (!t) return;
+  t.textContent = txt == null || txt === '' ? '—' : String(txt);
+  if (warn !== undefined) t.classList.toggle('warn', !!warn);
+}
+
+function renderPathMap(infoR, layers) {
+  const svg = $('#pathMap');
+  if (!svg) return;
+
+  const web  = (layers.web && layers.web.ok) ? (layers.web.body || {}) : null;
+  const info = (infoR && infoR.ok) ? (infoR.body || {}) : null;
+  const db   = (layers.db && layers.db.ok) ? (layers.db.body || {}) : null;
+
+  const addr = (web && web.web_addr) || '';
+  const dc = addr.startsWith('10.7.') ? 'DC-400'
+           : addr.startsWith('10.3.') ? 'DC-500'
+           : (info && info.l4_dc) || 'DC-500';
+  const left   = dc !== 'DC-400';
+  const me     = left ? MAP_IDS.left : MAP_IDS.right;
+  const other  = left ? MAP_IDS.right : MAP_IDS.left;
+  const direct = !!((web && web.upstream_mode === 'direct') || (info && info.path_mode === 'direct'));
+  const wasDc  = (info && info.was_dc) || dc;
+  const cross  = !!(info && info.cross_dc === true) || wasDc !== dc;
+
+  const on  = ['n-inet', me.eIn, me.gslb, me.eGf, me.fg, me.eFw, me.web];
+  const hot = [];
+  const steps = [left ? 'WEB-DC1' : 'WEB-DC2'];
+
+  if (!info) {
+    // WAS 응답이 없다. WEB 까지만 켜고 거기서 끊어 보여 준다.
+    hot.push(me.web);
+    steps.push('WAS 응답 없음');
+  } else {
+    if (direct) {
+      on.push(me.eDirect, cross ? other.was : me.was);
+      hot.push(cross ? other.was : me.was);
+      steps.push('다이렉트(L4 우회)');
+    } else {
+      on.push(me.eWl, me.l4, me.eFadc, me.fadc);
+      steps.push('L4 VIP ' + ((web && web.upstream_target) || '?'));
+      if (cross) { on.push(me.eCross, other.was); hot.push(other.was); }
+      else       { on.push(me.eLw, me.was); }
+    }
+    steps.push((info.was_host || 'WAS') + ' / ' + wasDc);
+
+    const wasLeft = wasDc !== 'DC-400';
+    on.push(wasLeft ? MAP_IDS.left.eDb : MAP_IDS.right.eDb, 'n-dbvip', 'e-vip-writer', 'n-writer');
+    if (!db || db.temporary_backend) hot.push('n-dbvip', 'n-writer');
+    steps.push('DB ' + ((db && db.db_target) || '?'));
+  }
+
+  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('on', 'hot'));
+  on.forEach((id)  => { const g = document.getElementById(id); if (g) g.classList.add('on'); });
+  hot.forEach((id) => { const g = document.getElementById(id); if (g) g.classList.add('hot'); });
+
+  /* 살아 있는 값으로 라벨을 바꾼다. 고정 문구를 두면 실제와 다른 주소를
+   * 읽고 그대로 믿게 된다. */
+  mapText('t-web1', left && addr ? addr : '10.3.11.51');
+  mapText('t-web2', !left && addr ? addr : '10.7.11.52');
+  const vipTxt = (web && web.upstream_target) ? String(web.upstream_target).split(':')[0] : null;
+  mapText('t-l4vip1', (left && !direct && vipTxt) ? vipTxt : '10.3.20.x · 미회신', !(left && !direct && vipTxt));
+  mapText('t-l4vip2', (!left && !direct && vipTxt) ? vipTxt : '10.7.20.x · 미회신', !(!left && !direct && vipTxt));
+  if (info && info.was_host) mapText(wasDc === 'DC-400' ? 't-was2' : 't-was1', info.was_host);
+  mapText('t-dbtarget', db ? (db.db_target || '?') + (db.temporary_backend ? ' · 임시' : ' · VIP') : '—', !db || !!db.temporary_backend);
+  mapText('t-writer', (db && db.writer && db.writer.hostname) || 'DB writer');
+  mapText('t-writer-sub',
+    !db ? '응답 없음'
+        : db.backend === 'sqlite' ? 'sqlite — 공유 DB 아님'
+        : Number(db.writer && db.writer.read_only) !== 0 ? 'read_only — 쓰기 불가'
+        : 'rw · semi=' + ((db.semi_sync && db.semi_sync.Rpl_semi_sync_master_status) || '?'),
+    !db || db.backend === 'sqlite' || Number(db.writer && db.writer.read_only) !== 0);
+
+  const legend = $('#mapLegend');
+  const notes = [];
+  if (direct) notes.push('L4 우회 — Full NAT·backup 흡수·L4 장애 감지가 미검증이다');
+  if (cross)  notes.push('교차 경유 — 본문과 쿼리가 전부 DCI 를 건넌다');
+  if (db && db.temporary_backend) notes.push('DB 가 임시 SQLite — 공유 DB 가 아니다');
+  if (db && db.backend === 'mariadb' && !db.rpo_zero) notes.push('semi-sync 강등 — RPO 0 이 아니다');
+  if (web && !web.xff) notes.push('XFF 없음 — 고객 IP 가 앞단에서 소실됐다');
+
+  legend.className = 'banner ' + (!info ? 'fail' : (notes.length ? 'warn' : 'ok'));
+  legend.textContent = steps.join('  →  ') + (notes.length ? '   ·   ' + notes.join(' / ') : '');
 }
 
 /* ---------- 3. 분포 ---------- */
@@ -345,8 +453,11 @@ async function doRead() {
 
 /* ---------- 갱신 루프 ---------- */
 async function refreshAll() {
-  const [info] = await Promise.all([probe('/api/info'), refreshLayers()]);
+  const [info, layers] = await Promise.all([probe('/api/info'), refreshLayers()]);
   renderPath(info);
+  // 경로도가 깨져도 나머지 화면은 살려 둔다.
+  try { renderPathMap(info, layers || {}); }
+  catch (e) { logEvent(`경로도 렌더 실패: ${e && e.message}`); }
   $('#pageMeta').textContent = '마지막 갱신 ' + new Date().toLocaleTimeString();
 }
 
