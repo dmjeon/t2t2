@@ -58,6 +58,7 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-si
 .dot { width:11px; height:11px; border-radius:50%; background: var(--muted); flex:none; }
 .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
 .dot.fail { background: var(--fail); }
+.dot.na   { background: var(--muted); }   /* 판정 불가 — 장애가 아니다 */
 
 main {
   max-width: 1180px; margin: 0 auto; padding: 16px;
@@ -212,12 +213,19 @@ footer {
 #pathMap g.n.cur .halo { opacity: 1; animation: aadcPulse 2.4s ease-out infinite; }
 @keyframes aadcPulse { 0% { r: 14; opacity: .85; } 100% { r: 22; opacity: 0; } }
 
-/* ② 대체 가능 */
+/* ② 대체 가능 — 진한 초록은 증거가 있는 것(점검 VS 응답 / deep 200)만.
+ *    후보이지만 이 서버에서 확인할 수단이 없는 것은 옅게(.unk) 칠한다.
+ *    둘을 같은 색으로 두면 "확인된 대체"와 "아마 될 것"이 구분되지 않는다. */
 #pathMap g.e-g.alt line.e,
 #pathMap g.e-g.alt polyline.e { stroke: var(--ok); stroke-dasharray: 6 4; }
 #pathMap g.e-g.alt .el { fill: var(--ok); }
 #pathMap g.n.alt .nd   { stroke: var(--ok); }
 #pathMap g.n.alt .halo { opacity: .55; stroke: var(--ok); animation: none; }
+
+#pathMap g.e-g.alt.unk, #pathMap g.n.alt.unk { opacity: .42; }
+#pathMap g.e-g.alt.unk line.e,
+#pathMap g.e-g.alt.unk polyline.e { stroke-dasharray: 2 6; }
+#pathMap g.n.alt.unk .halo { opacity: 0; }
 
 /* ③ 설정됐는데 실패 */
 #pathMap .brk {
