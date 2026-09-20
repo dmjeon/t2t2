@@ -15,25 +15,25 @@ source "${HERE}/../config.env"
 
 DUMP=/var/tmp/aadc-vip-dump.sql
 
-echo "== 0. VIP 도달 확인 =="
-ping -c2 -W2 "${DB_VIP}" >/dev/null || { echo "VIP ${DB_VIP} 에 닿지 않는다. keepalived 먼저."; exit 1; }
+echo "== 0. VIP 도달 확인 | VIP reachability =="
+ping -c2 -W2 "${DB_VIP}" >/dev/null || { echo "ERROR: VIP ${DB_VIP} 에 닿지 않는다 / VIP not reachable. Configure keepalived first."; exit 1; }
 mysql -h "${DB_VIP}" -u"${DB_DUMP_USER}" -p"${DB_DUMP_PASS}" -e "SELECT @@hostname, @@read_only"
 
-echo "== 1. 설정 파일 배치 =="
+echo "== 1. 설정 파일 배치 | Install my.cnf =="
 install -m 0644 "${HERE}/my.cnf.d/aadc-common.cnf" /etc/my.cnf.d/
 install -m 0644 "${HERE}/my.cnf.d/aadc-dr.cnf"     /etc/my.cnf.d/
 systemctl enable --now mariadb
 systemctl restart mariadb
 
-echo "== 2. VIP 에서 덤프 =="
+echo "== 2. VIP 에서 덤프 | Dump from the VIP =="
 mysqldump -h "${DB_VIP}" -u"${DB_DUMP_USER}" -p"${DB_DUMP_PASS}" \
   --all-databases --single-transaction --gtid --master-data=2 \
   --routines --triggers --events --flush-privileges > "${DUMP}"
 
-echo "== 3. 적재 =="
+echo "== 3. 적재 | Load =="
 mysql < "${DUMP}"
 
-echo "== 4. 복제 연결 =="
+echo "== 4. 복제 연결 | Start replication =="
 mysql <<SQL
 STOP SLAVE;
 CHANGE MASTER TO

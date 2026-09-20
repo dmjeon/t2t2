@@ -14,21 +14,21 @@ source "${HERE}/../config.env"
 
 DUMP=/var/tmp/aadc-master-dump.sql
 
-echo "== 1. 설정 파일 배치 =="
+echo "== 1. 설정 파일 배치 | Install my.cnf =="
 install -m 0644 "${HERE}/my.cnf.d/aadc-common.cnf" /etc/my.cnf.d/
 install -m 0644 "${HERE}/my.cnf.d/aadc-backup.cnf" /etc/my.cnf.d/
 systemctl enable --now mariadb
 systemctl restart mariadb
 
-echo "== 2. MASTER 덤프 (--gtid 로 gtid_slave_pos 까지 받아온다) =="
+echo "== 2. MASTER 덤프 | Dump from MASTER (--gtid carries gtid_slave_pos) =="
 mysqldump -h "${DB_MASTER_IP}" -u"${DB_DUMP_USER}" -p"${DB_DUMP_PASS}" \
   --all-databases --single-transaction --gtid --master-data=2 \
   --routines --triggers --events --flush-privileges > "${DUMP}"
 
-echo "== 3. 적재 =="
+echo "== 3. 적재 | Load =="
 mysql < "${DUMP}"
 
-echo "== 4. 복제 연결 (MariaDB GTID) =="
+echo "== 4. 복제 연결 | Start replication (MariaDB GTID) =="
 # MySQL 의 MASTER_AUTO_POSITION=1 에 해당하는 MariaDB 문법이 MASTER_USE_GTID 다.
 mysql <<SQL
 STOP SLAVE;
@@ -44,7 +44,7 @@ START SLAVE;
 SQL
 
 sleep 3
-echo "== 5. 상태 확인 =="
+echo "== 5. 상태 확인 | Status =="
 mysql -e "SHOW SLAVE STATUS\G" | grep -E \
   'Slave_IO_Running|Slave_SQL_Running|Seconds_Behind_Master|Last_.*Error|Using_Gtid|Gtid_IO_Pos'
 mysql -h "${DB_MASTER_IP}" -u"${DB_MON_USER}" -p"${DB_MON_PASS}" \
@@ -52,13 +52,15 @@ mysql -h "${DB_MASTER_IP}" -u"${DB_MON_USER}" -p"${DB_MON_PASS}" \
 
 cat <<'NOTE'
 
-------------------------------------------------------------------------------
-확인할 것:
-  · Slave_IO_Running / Slave_SQL_Running  = Yes
-  · Using_Gtid                            = Slave_Pos
-  · MASTER 쪽 Rpl_semi_sync_master_status = ON   ← 이게 OFF 면 RPO 0 이 아니다
+-------------------------------------------------------------------------------
+확인할 것 / Check:
+  · Slave_IO_Running / Slave_SQL_Running   = Yes
+  · Using_Gtid                             = Slave_Pos
+  · MASTER 쪽 Rpl_semi_sync_master_status  = ON
+    ON 이 아니면 RPO 0 이 아니다 / anything else means RPO is not zero
   · MASTER 쪽 Rpl_semi_sync_master_clients = 1
 
-다음: keepalived 구성 (keepalived/README.md) → 그 다음 DB-DR
-------------------------------------------------------------------------------
+다음 / Next:  keepalived (../install/10-db.sh 가 이어서 처리한다)
+              then DB-DR ->  ../install/10-db.sh DB-DR
+-------------------------------------------------------------------------------
 NOTE
