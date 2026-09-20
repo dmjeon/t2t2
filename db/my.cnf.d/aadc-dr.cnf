@@ -1,0 +1,16 @@
+# /etc/my.cnf.d/aadc-dr.cnf — DB-DR (10.7.31.52, DC-400, dr-db)
+[mysqld]
+server_id = 72
+report_host = DB-DR
+
+# DR 은 비동기다. semi-sync 를 켜면 DCI 지연이 DC-500 의 커밋 지연이 된다.
+rpl_semi_sync_slave_enabled  = OFF
+rpl_semi_sync_master_enabled = OFF
+
+# DR 은 사람이 2단계 게이트를 열기 전까지 절대 쓰기를 받지 않는다.
+# (공통 파일의 read_only=ON 에 더해, 여기서는 keepalived 가 없으므로
+#  자동으로 풀릴 경로가 아예 존재하지 않는다.)
+read_only = ON
+
+# 승격 시 즉시 쓰기를 받을 수 있도록 바이너리 로그는 켜 둔다.
+log_slave_updates = ON

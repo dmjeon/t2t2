@@ -1,0 +1,39 @@
+[Unit]
+Description=AADC PoC WAS (FastAPI)
+After=network-online.target
+Wants=network-online.target
+# DB 에 대한 의존을 걸지 않는다. DB 가 죽어도 WAS 프로세스는 살아 있어야
+# /health/local(= WAS 자체 생존)과 /health/deep(= writer 도달)이 분리된 채로 남는다.
+# 둘을 묶으면 DB 장애가 두 신호를 동시에 죽여 원인 분리가 안 된다.
+#
+# DR 전환 1단계는 이 유닛을 restart 한다 (dr/dr-failover-step1-switch-writer.sh).
+# 재시작 창 동안 이 WAS 는 503 이므로 WAS 는 한 대씩 돌린다.
+
+[Service]
+Type=simple
+User=aadc
+Group=aadc
+WorkingDirectory=/opt/aadc/app
+EnvironmentFile=/etc/aadc/was.env
+# ★ --proxy-headers / --forwarded-allow-ips 를 쓰지 않는다. 의도적이다.
+#   uvicorn 의 ProxyHeadersMiddleware 는 scope["client"] 를 X-Forwarded-For 값으로
+#   덮어쓴다. 그러면 req.client.host 가 고객 IP 가 되어 via_l4 가 사라진다.
+#   이 설계에서 req.client.host 는 **L4 의 SNAT 주소**여야 한다 — 그것이 곧
+#   "어느 DC 의 L4 를 경유했는가"이고, cross_dc(= degraded) 판정의 근거다
+#   (AADC-POC.md 5-1절, C12/C13, 7-③절 알람 ②).
+#   고객 IP 는 tracing.py 가 XFF 헤더에서 직접 읽으므로 미들웨어가 필요 없다.
+ExecStart=/opt/aadc/venv/bin/uvicorn aadc.main:app \
+    --host 0.0.0.0 --port 8000 \
+    --workers 4 \
+    --timeout-keep-alive 30
+Restart=always
+RestartSec=2
+# 장애 주입 시험(C9) 에서 "프로세스를 죽였는데 즉시 살아나 버리는" 것을 막으려면
+#   systemctl stop aadc-was   (kill 이 아니라 stop)
+# 을 쓴다. C20(NIC 다운)과의 차이를 정량화하는 것이 시험 목적이다.
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

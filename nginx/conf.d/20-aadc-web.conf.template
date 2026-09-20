@@ -1,0 +1,137 @@
+# =============================================================================
+# 서비스 서버 블록 — install/30-web.sh 가 치환해 설치한다.
+#
+# TLS 는 DMZ FortiADC 에서 종료한다(XFF 삽입을 위해 L7 프로파일이 필요하므로).
+# 따라서 nginx 는 평문 80 을 받는다. FortiADC 가 패스스루로 바뀌면
+# 맨 아래 443 블록을 쓴다.
+# =============================================================================
+
+# ----- 공통 프록시 타임아웃 (AADC-POC.md 3-2절) ------------------------------
+proxy_connect_timeout 2s;
+proxy_read_timeout    5s;
+proxy_send_timeout    5s;
+
+server {
+    listen 80 default_server;
+    server_name __SERVICE_FQDN__ __WEB_FQDN__ _;
+
+    root /usr/share/nginx/html/aadc;
+    index index.html;
+
+    # ----- 검증 화면 (정적) --------------------------------------------------
+    # ★ 관리 대역에서만. 이 화면은 DB writer 신원·semi-sync 상태·degraded 여부를
+    #   그대로 보여 준다. 인터넷에 열어 둘 것이 아니다.
+    location / {
+        include /etc/nginx/conf.d/acl-admin.inc;
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store";
+    }
+
+    # ----- 진단 API (DB 내부 상태 노출) --------------------------------------
+    # /api/db/status 는 writer 호스트명·server_id·semi-sync 상태를 돌려준다.
+    # 접두사 매칭이 더 길어서 아래 location /api/ 보다 우선한다.
+    location /api/db/ {
+        include /etc/nginx/conf.d/acl-admin.inc;
+        proxy_pass http://was_pool;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+        proxy_next_upstream off;
+    }
+
+    # ----- 애플리케이션 ------------------------------------------------------
+    # /api/info 는 의도적으로 열어 둔다 — R5(고객 IP 보존)를 외부에서 검증해야
+    # 하기 때문이다. 대신 돌려주는 것은 경로 정보(was_host / via_l4 / l4_dc)까지고
+    # DB 상태는 위 /api/db/ 로 분리했다.
+    location /api/ {
+        proxy_pass http://was_pool;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+
+        proxy_next_upstream         error timeout http_502 http_503 http_504;
+        proxy_next_upstream_tries   2;
+        proxy_next_upstream_timeout 3s;
+    }
+
+    # ----- /health/deep : GSLB 전용 -----------------------------------------
+    # 실트래픽과 **같은 경로**(로컬 L4 VIP)를 탄다. 이것이 핵심이다.
+    # backup 전환이 일어나면 체크도 자동으로 backup 을 타므로,
+    # "WAS 장애로는 DC 가 넘어가지 않는다"는 의도가 별도 로직 없이 구현된다.
+    #
+    # L4 장비가 죽으면 여기서 502 가 나고 GSLB 가 이 DC 를 뺀다.
+    # deep check 를 두는 단독 근거가 바로 그 경우다 (4-1절, C18).
+    location = /health/deep {
+        include /etc/nginx/conf.d/acl-health.inc;
+        proxy_pass http://was_pool/health/deep;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+
+        # 재시도로 진실을 가리지 않는다. 한 번 물어보고 그대로 보고한다.
+        proxy_next_upstream   off;
+        proxy_connect_timeout 1s;
+        # ★ 앱의 DB 타임아웃(connect 2s + read 3s = 최대 5s)보다 길어야 한다.
+        #   짧으면 앱이 "writer_unreachable" 을 설명하기 전에 nginx 가 504 를 내고,
+        #   L4 장비 장애와 DCI 단절이 똑같은 504 로 뭉개진다. 그 둘을 구분하는 것이
+        #   deep check 를 남긴 유일한 근거다 (AADC-POC.md 4-1절).
+        #   AADC_DB_*_TIMEOUT 을 바꾸면 이 값도 같이 올려야 한다.
+        proxy_read_timeout    6s;
+
+        access_log /var/log/nginx/health.log health;
+    }
+
+    # ----- /health/local : 알람 전용 (GSLB 는 보지 않는다) --------------------
+    # L4 를 우회해 로컬 WAS 를 직접 본다. 실패 = backup 으로 넘어가 있다.
+    location = /health/local {
+        include /etc/nginx/conf.d/acl-health.inc;
+        proxy_pass http://was_local_direct/health/local;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+
+        proxy_next_upstream   off;
+        proxy_connect_timeout 1s;
+        proxy_read_timeout    2s;
+
+        access_log /var/log/nginx/health.log health;
+    }
+
+    # ----- /health/web : nginx 자체 생존 (L4·WAS 와 무관) ---------------------
+    # WEB 계층만 떼어 보고 싶을 때 쓴다. GSLB 는 쓰지 않는다.
+    location = /health/web {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr"}';
+    }
+
+    # ----- 점검 전용 VS (backup 멤버 검증, C13) ------------------------------
+    location /checkvs/ {
+        include /etc/nginx/conf.d/acl-admin.inc;
+        proxy_pass http://was_check_vs/;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+        proxy_next_upstream off;
+        access_log off;
+    }
+
+    # ----- 반대편 DC 조회 (검증 화면 전용, 서비스 경로 아님) ------------------
+    location /peer/ {
+        include /etc/nginx/conf.d/acl-admin.inc;
+        proxy_pass http://peer_web/;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+        proxy_next_upstream   off;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout    5s;
+        access_log off;
+    }
+
+    # 에러를 감추지 않는다. 502 는 "원인 계층이 바로 특정되는" 정보다 (5-3절).
+    error_page 502 503 504 /50x.html;
+    location = /50x.html { internal; }
+}
+
+# -----------------------------------------------------------------------------
+# DMZ FortiADC 가 TLS 패스스루로 바뀌는 경우에만 사용.
+# 그 구성에서는 XFF 삽입이 불가능하므로 고객 IP 가 소실된다(5-2절).
+# 쓰려면 FortiADC 를 transparent 모드로 돌려야 한다.
+# -----------------------------------------------------------------------------
+# server {
+#     listen 443 ssl http2;
+#     server_name __SERVICE_FQDN__;
+#     ssl_certificate     /etc/pki/tls/certs/example.com.crt;
+#     ssl_certificate_key /etc/pki/tls/private/example.com.key;
+#     ssl_protocols       TLSv1.2 TLSv1.3;
+#     include /etc/nginx/conf.d/20-aadc-locations.inc;
+# }

@@ -1,0 +1,21 @@
+[Unit]
+Description=AADC 복제 심장박동 (writer 에서만 실제로 기록된다)
+After=mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=simple
+# ★ root 로 돌리지 않는다. read_only=ON 은 SUPER 권한 사용자를 막지 못하므로
+#   root 로 돌리면 DB-BACKUP 에서도 UPDATE 가 성공해 복제본에 로컬 쓰기가 남는다.
+#   log_slave_updates=ON + gtid_strict_mode=ON 조합에서 GTID 가 갈라진다.
+#   MariaDB 에는 super_read_only 가 없으므로, SUPER 없는 계정을 쓰는 것이
+#   유일한 방어다 (db/sql/02-grants.sql 의 방침과 동일).
+User=aadc-hb
+Group=aadc-hb
+EnvironmentFile=/etc/aadc/heartbeat.env
+ExecStart=/usr/local/bin/aadc-repl-heartbeat.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

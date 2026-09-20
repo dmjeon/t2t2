@@ -1,0 +1,65 @@
+# =============================================================================
+# /etc/my.cnf.d/aadc-common.cnf — DB 3 노드 공통 (MASTER / BACKUP / DR)
+# 대상: MariaDB 10.5+ (Rocky Linux 9 AppStream). 10.3 도 동작한다.
+# =============================================================================
+[mysqld]
+bind_address                   = 0.0.0.0
+port                           = 3306
+skip_name_resolve              = ON
+max_connections                = 500
+character_set_server           = utf8mb4
+collation_server               = utf8mb4_unicode_ci
+
+# ----- 안전장치 ④ : 재기동 시 쓰기 원천 차단 -------------------------------
+# 리부팅된 노드가 혼자 깨어나 쓰기를 받는 사고를 막는다.
+# VIP 를 잡은 노드만 keepalived notify_master 가 이 값을 푼다.
+read_only                      = ON
+#
+# ※ `super_read_only = ON` 은 **MySQL 전용 변수**다. MariaDB 에는 존재하지
+#   않으며, 적으면 기동 자체가 실패한다. (설계 문서 3-4절 ④ 도 이 내용으로
+#   갱신돼 있다 — 2026-09-20)
+#
+#   따라서 위의 read_only=ON 은 **SUPER 권한을 가진 접속을 막지 못한다.**
+#   대체 수단은 하나뿐이다 — DB 에 쓰는 상주 프로세스에 SUPER 를 주지 않는 것.
+#     aadc_app  : aadc.* CRUD, SUPER 없음        (애플리케이션)
+#     aadc_hb   : repl_heartbeat 만, SUPER 없음  (복제 심장박동)
+#     monitor   : REPLICATION CLIENT, SUPER 없음 (알람)
+#     root      : notify_master 의 read_only 해제 전용
+#   심장박동을 root 로 돌리면 BACKUP 에서도 쓰기가 성공해 GTID 가 갈라진다.
+#   (sql/02-grants.sql, monitoring/bin/aadc-repl-heartbeat.sh 참조)
+#   MySQL 8.0 으로 간다면 아래 주석을 해제한다.
+# super_read_only              = ON
+
+# ----- 바이너리 로그 / GTID -------------------------------------------------
+log_bin                        = /var/lib/mysql/binlog
+binlog_format                  = ROW
+binlog_row_image               = FULL
+sync_binlog                    = 1
+expire_logs_days               = 7
+max_binlog_size                = 512M
+
+# BACKUP 이 승격되어도 DR 이 따라올 수 있어야 하므로 전 노드에 켠다.
+log_slave_updates              = ON
+relay_log                      = /var/lib/mysql/relay-bin
+relay_log_recovery             = ON
+
+# MariaDB GTID.
+#   ※ 설계 문서의 `MASTER_AUTO_POSITION=1` 은 MySQL 문법이다.
+#     MariaDB 의 동등물은 CHANGE MASTER TO ... MASTER_USE_GTID = slave_pos 이며,
+#     init-*.sh 가 그렇게 설정한다.
+gtid_strict_mode               = ON
+# ★ .51 과 .53 이 같은 도메인이어야 로컬 failover 후에도 DR 이 재설정 없이
+#   따라간다. 절대 노드마다 다르게 두지 말 것.
+gtid_domain_id                 = 1
+
+# ----- InnoDB ---------------------------------------------------------------
+innodb_buffer_pool_size        = 8G          # 16GB VM 기준. DR(15GB)도 동일하게 둔다
+innodb_flush_log_at_trx_commit = 1           # semi-sync 와 짝. RPO 0 의 전제
+innodb_flush_method            = O_DIRECT
+innodb_file_per_table          = ON
+
+# ----- 느린 쿼리 (C2 / C9-a 계측) -------------------------------------------
+slow_query_log                 = ON
+slow_query_log_file            = /var/log/mariadb/slow.log
+long_query_time                = 0.5
+log_queries_not_using_indexes  = OFF

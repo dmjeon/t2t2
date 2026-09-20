@@ -1,0 +1,13 @@
+[Unit]
+Description=AADC PoC 점검 + 알람 1회 실행
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/aadc/monitor.env
+Environment=AADC_CONF=/opt/aadc/config.env
+# probe 가 어떤 코드로 죽든 alarm 은 반드시 돌아야 한다.
+# Type=oneshot 은 앞선 ExecStart 가 실패하면 뒤를 실행하지 않으므로 '-' 를 붙인다.
+# ('-' 없이 SuccessExitStatus 로만 막으면 exit 2 이상에서 알람이 통째로 멈춘다)
+ExecStart=-/usr/local/bin/aadc-probe.sh
+ExecStart=-/usr/local/bin/aadc-alarm.sh

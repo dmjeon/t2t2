@@ -1,0 +1,72 @@
+# =============================================================================
+# /etc/keepalived/keepalived.conf — DB-BACKUP (10.3.31.53)
+# AADC-POC.md 3-4절 "안전장치 5개"
+#
+# ★ 이 VIP 는 DC-500 **내부**에서만 움직인다. DC 를 건너지 않으므로
+#   split-brain 이 구조적으로 성립하지 않는다. DC 간 VIP 는 기각된 설계다(부록 B).
+# =============================================================================
+
+global_defs {
+    router_id DB_BACKUP_500
+    enable_script_security
+    script_user root
+    # 기본 vrrp_strict 는 unicast + notify 조합에서 걸리는 경우가 있어 쓰지 않는다.
+}
+
+# ----- 안전장치 ③ : 2노드 타이브레이커 (게이트웨이 증인) --------------------
+# 노드가 2개면 쿼럼이 없어 "상대가 죽었나, 내가 고립됐나"를 구분하지 못한다.
+# 고립된 노드는 게이트웨이에 닿지 못해 스스로 우선순위를 낮춘다.
+vrrp_script chk_db {
+    script   "/usr/local/bin/chk_db.sh"
+    interval 2
+    timeout  2
+    rise     2
+    fall     2
+    weight   -50
+}
+
+vrrp_instance DB_VIP {
+    # 양쪽 다 BACKUP — 초기 선점 경쟁 방지
+    state BACKUP
+    interface ens192                 # ← config.env 의 VRRP_IFACE 로 치환
+    virtual_router_id 51
+    priority 90                      # MASTER 100 / BACKUP 90
+    advert_int 1
+
+    # ----- 안전장치 ② : nopreempt -----------------------------------------
+    # 복구된 구 master 가 VIP 를 되찾으면 순단이 한 번 더 생긴다.
+    # 되찾지 않게 하고, 재투입은 계획된 작업으로 한다.
+    # 부수 효과로 B 훈련 때마다 master 역할이 .51 ↔ .53 로 번갈아 가며
+    # 복구 작업이 0 이 된다.
+    nopreempt
+
+    # ----- 안전장치 ① : VRRP 를 unicast 로 --------------------------------
+    # dc-db 는 확장 세그먼트다. multicast VRRP 를 쓰면 광고가 DCI 를 타고
+    # DC-400 까지 흘러간다. unicast 로 묶어 DC-500 안에 가둔다.
+    unicast_src_ip 10.3.31.53
+    unicast_peer {
+        10.3.31.51
+    }
+
+    authentication {
+        auth_type PASS
+        auth_pass CHANGE_ME          # ← config.env 의 VRRP_AUTH_PASS (8자 이하)
+    }
+
+    virtual_ipaddress {
+        10.3.31.50/24 dev ens192
+    }
+
+    track_script {
+        chk_db
+    }
+
+    # 전환 직후 ARP 를 확실히 뿌린다. 4초 목표(C3)의 상당 부분이 여기서 결정된다.
+    garp_master_delay   1
+    garp_master_refresh 5
+
+    notify_master "/usr/local/bin/aadc-notify.sh MASTER"
+    notify_backup "/usr/local/bin/aadc-notify.sh BACKUP"
+    notify_fault  "/usr/local/bin/aadc-notify.sh FAULT"
+    notify_stop   "/usr/local/bin/aadc-notify.sh STOP"
+}

@@ -1,0 +1,16 @@
+# /etc/my.cnf.d/aadc-backup.cnf — DB-BACKUP (10.3.31.53, DC-500)
+# ★ MASTER 와 동일 사양(16GB / 4vCPU / 76GB)이어야 한다. 전환 후 동일 성능이 전제다.
+[mysqld]
+server_id = 53
+report_host = DB-BACKUP
+
+rpl_semi_sync_slave_enabled  = ON
+# nopreempt 때문에 B 훈련마다 이 노드가 master 가 된다. 미리 켜 둔다.
+rpl_semi_sync_master_enabled = ON
+rpl_semi_sync_master_timeout = 1000
+rpl_semi_sync_master_wait_point = AFTER_SYNC
+# OFF 로 둔다. ON 이면 슬레이브가 0 이 된 직후에도 커밋마다 타임아웃(1초)을
+# 기다렸다가 강등된다. 안전장치 ⑤ 의 취지는 "backup 장애가 master 정지로
+# 번지지 않게" 하는 것이므로, 즉시 async 로 떨어지는 쪽이 맞다.
+# 강등되면 알람 ③ 이 즉시 울린다 — 조용히 RPO 가 깨지는 일은 없다.
+rpl_semi_sync_master_wait_no_slave = OFF
