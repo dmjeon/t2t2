@@ -83,7 +83,7 @@ c11)
      이 구조에서 가장 흔한 사고 형태다 (9절).
 
    측정은 c9a 모드를 WEB2_FQDN 으로 돌려서 쓴다:
-     WEB1_FQDN=web2.example.com ./05-scenario-c8-c11.sh c9a 1800
+     WEB1_FQDN=web2.niceci.cloud ./05-scenario-c8-c11.sh c9a 1800
 STEP
   ;;
 
@@ -129,8 +129,8 @@ c19)
      4. 문제 발견 시 DC-400 만 롤백      ← 99% 는 애초에 노출되지 않음
 
    버전 확인:
-     curl -s https://web1.example.com/api/version   # DC-500
-     curl -s https://web2.example.com/api/version   # DC-400
+     curl -s https://web1.niceci.cloud/api/version   # DC-500
+     curl -s https://web2.niceci.cloud/api/version   # DC-400
 STEP
   v1=$(get "https://${WEB1_FQDN}/api/version"); v2=$(get "https://${WEB2_FQDN}/api/version")
   note "DC-500: $(jqget "${v1}" app_version)   DC-400: $(jqget "${v2}" app_version)"

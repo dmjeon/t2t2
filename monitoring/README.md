@@ -35,7 +35,22 @@ WAS 장애 시 GSLB 를 옮기지 않기로 했으므로, backup 경유 상태�
 | `bin/aadc-repl-heartbeat.sh` | DB 상주 | writer 가 5초마다 박동 기록 |
 | `systemd/aadc-monitor.timer` | | 위 두 개를 1분마다 |
 
-설치: `install/40-monitor.sh`, 수신처: `/etc/aadc/monitor.env`
+설치: `install/50-monitoring.sh`, 수신처: `/etc/aadc/monitor.env`
+
+**핵심 설치(`install/00`~`30`)와 분리돼 있다.** 이걸 안 깔아도 서비스는 돌아간다.
+그래서 미루기 쉽고, 그래서 위험하다. 역할에 따라 설치물이 다르며 인자 없이
+실행하면 `AADC_ROLE` 로 자동 판별한다.
+
+| 모드 | 대상 | 설치물 |
+|---|---|---|
+| `heartbeat` | DB-MASTER / DB-BACKUP | 복제 심장박동 데몬 |
+| `alarms` | 모니터링 호스트 / 점프서버 | 1분 주기 점검 + 알람 5종 타이머 |
+| `senderonly` | WEB / WAS / DB-DR | 알람 송출기만 (keepalived notify 등이 호출) |
+
+```bash
+./install/50-monitoring.sh              # 자동 판별
+./install/50-monitoring.sh alarms       # 강제 지정
+```
 
 ---
 
@@ -55,7 +70,7 @@ WAS 장애 시 GSLB 를 옮기지 않기로 했으므로, backup 경유 상태�
 GSLB 1% 만으로는 야간에 DC-400 이 몇 시간씩 검증 공백에 빠진다. 초당 10건
 기준 1% 면 0.1건/s 이고, 트래픽이 없는 시간대에는 0 이다.
 
-`web1.example.com` / `web2.example.com` 로 각 DC 를 **가중치와 무관하게**
+`web1.niceci.cloud` / `web2.niceci.cloud` 로 각 DC 를 **가중치와 무관하게**
 1분마다 직접 때린다.
 
 ## 점검 전용 VS 가 따로 있는 이유

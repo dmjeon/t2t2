@@ -1,4 +1,7 @@
-config.env
+# config.env 는 PoC 실값이라 의도적으로 포함한다 (폐기 예정 환경).
+# 운영으로 이어 쓸 때는 반드시 다시 제외할 것:
+#   config.env
 __pycache__/
 *.pyc
 .venv/
+.DS_Store

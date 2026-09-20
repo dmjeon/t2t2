@@ -67,21 +67,9 @@ if [ "${AADC_ROLE}" = "DB-MASTER" ] || [ "${AADC_ROLE}" = "DB-BACKUP" ]; then
   ip -4 addr show "${VRRP_IFACE}" | grep -F "${DB_VIP}" && echo "   이 노드가 VIP 를 잡았다" \
                                                         || echo "   이 노드는 VIP 를 잡지 않았다 (정상일 수 있음)"
 
-  echo "== 5. 복제 심장박동 =="
-  # ★ SUPER 없는 전용 계정으로 돌린다. root 로 돌리면 read_only=ON 을 우회해
-  #   DB-BACKUP 에도 쓰기가 남고 GTID 가 갈라진다 (스크립트 머리말 참조).
-  id -u aadc-hb >/dev/null 2>&1 || useradd -r -s /sbin/nologin aadc-hb
-  install -m 0755 "${ROOT}/monitoring/bin/aadc-repl-heartbeat.sh" /usr/local/bin/
-  install -m 0644 "${ROOT}/monitoring/systemd/aadc-repl-heartbeat.service" /etc/systemd/system/
-  cat > /etc/aadc/heartbeat.env <<HBENV
-DB_HB_USER=${DB_HB_USER}
-DB_HB_PASS=${DB_HB_PASS}
-AADC_HEARTBEAT_INTERVAL=5
-HBENV
-  chmod 0640 /etc/aadc/heartbeat.env
-  chown root:aadc-hb /etc/aadc/heartbeat.env
-  systemctl daemon-reload
-  systemctl enable --now aadc-repl-heartbeat
+  # 복제 심장박동과 알람은 여기서 깔지 않는다 → 50-monitoring.sh
+  # keepalived 의 notify 스크립트는 알람 송출기가 없으면 로그로만 남긴다.
+  # 즉 DB 계층은 모니터링 없이도 정상 동작한다. 다만 조용할 뿐이다.
 fi
 
 cat <<'NEXT'
@@ -95,5 +83,10 @@ cat <<'NEXT'
   · read_only=ON 이 기본이다. VIP 를 잡은 노드만 notify_master 가 푼다.
   · VRRP 는 unicast 다. dc-db 가 확장 세그먼트라 multicast 면 DCI 를 타고
     DC-400 까지 흘러간다.
+
+나중에 (지금 안 해도 DB 는 정상 동작한다)
+  ./50-monitoring.sh   복제 심장박동 + semi-sync 강등 알람 + DR 지연 알람
+                       ★ 이걸 안 깔면 RPO 가 깨져도 조용하다. 오래 미루지 말 것.
+  ../dr/               DR 전환 2단 게이트. 설치 불필요, 번들에서 바로 실행
 ------------------------------------------------------------------------------
 NEXT

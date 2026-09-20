@@ -70,7 +70,7 @@ systemctl stop aadc-was
 
 ```bash
 # GSLB 가중치를 0:100 으로 바꾼 뒤
-WEB1_FQDN=web2.example.com ./verify/05-scenario-c8-c11.sh c9a 1800
+WEB1_FQDN=web2.niceci.cloud ./verify/05-scenario-c8-c11.sh c9a 1800
 ```
 
 평시 1% 라고 DC-400 사양을 낮추면 DC-500 장애 순간 **100배 부하 점프**로 같이
