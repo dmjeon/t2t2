@@ -299,18 +299,16 @@ function renderPathMap(infoR, layers) {
   const cross  = !!(info && (info.cross_dc === true || info.was_dc !== dc));
   const wasSide = (wasDc === 'DC-400') ? MAP_IDS.right : MAP_IDS.left;
 
-  /* 세 가지만 표시한다.
+  /* 두 가지만 칠한다.
    *   cur   지금 실제로 지나간 경로
-   *   alt   그 경로가 끊겼을 때 넘어갈 수 있는 곳 — 지금 살아 있음이 확인된 것만
    *   fail  설정은 되어 있는데 지금 못 가는 경로
    * 설정 자체가 없는 경로(예: L4 우회 중의 backup 멤버)는 fail 이 아니다.
    * 없는 것을 빨갛게 칠하면 고칠 것과 없는 것이 같은 색이 된다. */
-  const cur = [], alt = [], altUnk = [], fail = [];
-  const sCur = [], sAlt = [], sFail = [];
+  const cur = [], fail = [];
+  const sCur = [], sFail = [];
 
   // 어느 WEB 이 줬는지부터 모르면 아무것도 칠하지 않는다. 좌우를 찍어서
   // 칠하면 멀쩡한 쪽을 빨갛게 만들 수 있다.
-  let altGap = false;
   if (!web) {
     sFail.push('/health/web 무응답 — 이 화면을 준 WEB 을 판정할 수 없다');
   } else {
@@ -361,78 +359,34 @@ function renderPathMap(infoR, layers) {
     }
   }
 
-  /* ------------------------------------------------------------------
-   * 대체 경로 — "그 길이 막혔을 때 갈 수 있는 곳이 있었나".
+  /* 설정은 되어 있는데 못 가는 경로 — 이 WEB 에서 **판정할 수 있는 것만** 센다.
    *
-   * 증거가 있는 것만 진한 초록으로 칠한다. 후보이긴 한데 이 서버에서
-   * 확인할 수단이 없는 것은 옅은 초록(미확인)이다. 둘을 같은 색으로 칠하면
-   * "확인된 대체"와 "아마 될 것"이 구분되지 않는다.
-   * ---------------------------------------------------------------- */
-  const cvHost  = (cvR && cvR.ok && cvR.body && cvR.body.was_host) || null;
-  const localOk = !!(layers.local && layers.local.ok);
-
-  /* ① 같은 WAS 로 가는 다른 길. 지금 경로가 끊겼을 때만 의미가 있고,
-   *    로컬 WAS 자체가 죽었으면(= /health/local 실패) 대체가 아니다 —
-   *    같은 죽은 끝점으로 가는 다른 길일 뿐이다. */
-  if (web && !info) {
-    if (localOk && direct) {
-      altUnk.push(me.eWl, me.l4, me.eLw);
-      sAlt.push('L4 VIP 경유 — 로컬 WAS 는 살아 있다(/health/local 200). 경로만 바꾸면 된다 (미확인)');
-    } else if (localOk) {
-      altUnk.push(me.eDirect);
-      sAlt.push('L4 우회 직결 — 로컬 WAS 는 살아 있다(/health/local 200) (미확인)');
-    }
+   * ① 교차 backup 멤버 — L4 가 실제로 쓰는 경로이므로 l4 모드에서만 본다.
+   *    L4 우회 중에는 점검 VS 가 L4 를 안 거치고 원격 WAS 를 직접 때리는데,
+   *    그 경로에는 방화벽이 열려 있지 않다. 실패해도 구성 문제가 아니다.
+   * ② 반대편 DC — 앱이 deep 응답을 돌려줬을 때만. 못 닿은 것은 WEB 끼리
+   *    라우팅 경로가 없다는 뜻이고, 그건 GSLB 가 밖에서 볼 일이지 이 서버가
+   *    보고할 일이 아니다. 여기를 빨갛게 칠하면 멀쩡한 DC 를 죽었다고 보고한다. */
+  const cvHost = (cvR && cvR.ok && cvR.body && cvR.body.was_host) || null;
+  if (!cross && !direct && !cvHost) {
+    fail.push(me.eCross, other.was);
+    sFail.push('backup 멤버 무응답 — 지금 로컬 WAS 가 죽으면 흡수할 곳이 없다');
   }
 
-  /* ② 다른 WAS — 원격 backup 멤버. 평시 트래픽 0 이라 점검 VS 말고는 알 데가 없다. */
-  if (!cross) {
-    if (cvHost) {
-      alt.push(me.eCross, other.was);
-      sAlt.push(`${cvHost} 로 넘어갈 수 있다 (점검 VS 응답)`);
-    } else if (direct) {
-      // L4 우회 중에는 점검 VS 가 L4 를 안 거치고 원격 WAS 를 직접 때린다.
-      // 그 경로에는 방화벽이 열려 있지 않으므로, 실패가 곧 "대체 없음"이 아니다.
-      altUnk.push(me.eCross, other.was);
-      altGap = true;
-      sAlt.push('원격 WAS — 미확인. L4 우회 중이라 점검 경로가 서비스 경로와 다르다');
-    } else {
-      fail.push(me.eCross, other.was);
-      sFail.push('backup 멤버 무응답 — 지금 로컬 WAS 가 죽으면 흡수할 곳이 없다');
-    }
-  }
-
-  /* ③ 다른 DC — ★ 여기서는 판정할 수 없다. 실패로 세지 않는다.
-   *
-   *    GSLB 는 밖에서 양쪽을 관찰해 경로를 돌려준다. WEB 서버끼리는 라우팅
-   *    경로가 없으므로 /peer/ 가 실패해도 그건 "반대편 DC 가 죽었다"가 아니라
-   *    "이 서버에서 볼 수 없다"는 뜻이다. 그걸 빨갛게 칠하면 멀쩡한 DC 를
-   *    죽었다고 보고하는 화면이 된다. */
   const otherDc  = left ? 'DC-400' : 'DC-500';
   const peerBody = (peerR && peerR.body) || {};
-  const peerAnswered = peerBody.check === 'deep';   // 앱이 답했다 = 경로가 있었다
-  if (peerAnswered && peerBody.status === 'ok') {
-    alt.push(other.eIn, other.gslb, other.web);
-    sAlt.push(`DC 장애 시 ${otherDc} 로 이동 가능 (deep 200)`);
-  } else if (peerAnswered) {
-    // 닿기는 닿았는데 스스로 실패라고 답했다. 이건 여기서 판정할 수 있다.
+  if (peerBody.check === 'deep' && peerBody.status !== 'ok') {
     fail.push(other.eIn, other.gslb, other.web);
     sFail.push(`${otherDc} deep 실패 (${peerBody.reason || 'fail'}) — 이동 대상으로 못 쓴다`);
-  } else {
-    altUnk.push(other.eIn, other.gslb, other.web);
-    sAlt.push(`${otherDc} — 이 서버에서는 판정 불가. GSLB 가 밖에서 보고 돌린다`);
   }
 
-  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('cur', 'alt', 'fail', 'unk'));
+  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('cur', 'fail'));
   const paint = (ids, cls) => ids.forEach((id) => {
     const g = document.getElementById(id);
-    // 이미 칠해진 것은 덮어쓰지 않는다. 우선순위는 현재 > 실패 > 확인된 대체 >
-    // 미확인 대체. 지나간 길과 대체 길이 겹치면 "지금 간 길"이 이긴다.
-    if (g && !g.classList.contains('cur') && !g.classList.contains('fail')
-          && !g.classList.contains('alt')) {
-      cls.split(' ').forEach((c) => g.classList.add(c));
-    }
+    // 지나간 길이 우선이다. 현재 경로로 칠한 것은 덮어쓰지 않는다.
+    if (g && !g.classList.contains('cur')) g.classList.add(cls);
   });
-  paint(cur, 'cur'); paint(fail, 'fail'); paint(alt, 'alt'); paint(altUnk, 'alt unk');
+  paint(cur, 'cur'); paint(fail, 'fail');
 
   /* 라벨은 살아 있는 값으로 바꾼다. 고정 문구를 두면 실제와 다른 주소를 믿게 된다. */
   mapText('t-web1', left && addr ? addr : '10.3.11.51');
@@ -451,10 +405,9 @@ function renderPathMap(infoR, layers) {
         : 'rw · semi=' + ((db.semi_sync && db.semi_sync.Rpl_semi_sync_master_status) || '?'));
 
   const legend = $('#mapLegend');
-  legend.className = 'banner ' + (sFail.length ? 'fail' : (altGap ? 'warn' : 'ok'));
+  legend.className = 'banner ' + (sFail.length ? 'fail' : 'ok');
   legend.replaceChildren();
   legend.appendChild(el('div', 'curline', '현재  ' + (sCur.join('  →  ') || '판정 불가')));
-  if (sAlt.length)  legend.appendChild(el('div', 'altline',  '대체  ' + sAlt.join(' / ')));
   if (sFail.length) legend.appendChild(el('div', 'failline', '실패  ' + sFail.join(' / ')));
   track('pathmap', (sFail.length ? 'FAIL:' + sFail.length : 'OK') + '/' + sCur.join('>'), '활성 경로');
 }

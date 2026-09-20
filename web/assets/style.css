@@ -193,18 +193,17 @@ footer {
 #pathMap .mk-warn   { fill: var(--warn); }
 
 /* ---------------------------------------------------------------------------
- * 세 가지만 칠한다.
+ * 두 가지만 칠한다.
  *
- *   cur   지금 지나간 경로            — 원래 색(트래픽 파랑 / DB 보라), 불투명
- *   alt   넘어갈 수 있는 곳            — 초록 점선. 살아 있음이 확인된 것만
- *   fail  설정됐는데 못 가는 경로      — 빨강 점선 + ✕
+ *   cur   지금 지나간 경로       — 원래 색(트래픽 파랑 / DB 보라), 불투명 + halo
+ *   fail  설정됐는데 못 가는 경로 — 빨강 점선 + ✕
  *
- * 나머지는 배경이다. 구성이 아예 없는 경로(L4 우회 중의 backup 멤버 등)는
- * 여기에 들어오지 않는다 — 없는 것과 고장난 것이 같은 색이면 둘 다 안 보인다.
+ * 나머지는 배경이지만 **읽을 수 있을 만큼은 남긴다.** 경로 밖 노드가 안 보이면
+ * 지금 어디를 보고 있는지 알 수 없다. 마우스를 올리면 그 노드만 또렷해진다.
  * ------------------------------------------------------------------------- */
-#pathMap g.n, #pathMap g.e-g { opacity: .1; transition: opacity .25s; }
+#pathMap g.n, #pathMap g.e-g { opacity: .5; transition: opacity .18s; }
+#pathMap g.e-g { opacity: .38; }
 #pathMap g.n.cur, #pathMap g.e-g.cur,
-#pathMap g.n.alt, #pathMap g.e-g.alt,
 #pathMap g.n.fail, #pathMap g.e-g.fail { opacity: 1; }
 
 /* ① 현재 경로 */
@@ -213,21 +212,7 @@ footer {
 #pathMap g.n.cur .halo { opacity: 1; animation: aadcPulse 2.4s ease-out infinite; }
 @keyframes aadcPulse { 0% { r: 14; opacity: .85; } 100% { r: 22; opacity: 0; } }
 
-/* ② 대체 가능 — 진한 초록은 증거가 있는 것(점검 VS 응답 / deep 200)만.
- *    후보이지만 이 서버에서 확인할 수단이 없는 것은 옅게(.unk) 칠한다.
- *    둘을 같은 색으로 두면 "확인된 대체"와 "아마 될 것"이 구분되지 않는다. */
-#pathMap g.e-g.alt line.e,
-#pathMap g.e-g.alt polyline.e { stroke: var(--ok); stroke-dasharray: 6 4; }
-#pathMap g.e-g.alt .el { fill: var(--ok); }
-#pathMap g.n.alt .nd   { stroke: var(--ok); }
-#pathMap g.n.alt .halo { opacity: .55; stroke: var(--ok); animation: none; }
-
-#pathMap g.e-g.alt.unk, #pathMap g.n.alt.unk { opacity: .42; }
-#pathMap g.e-g.alt.unk line.e,
-#pathMap g.e-g.alt.unk polyline.e { stroke-dasharray: 2 6; }
-#pathMap g.n.alt.unk .halo { opacity: 0; }
-
-/* ③ 설정됐는데 실패 */
+/* ② 설정됐는데 실패 */
 #pathMap .brk {
   font: 700 14px -apple-system, sans-serif; fill: var(--fail);
   text-anchor: middle; opacity: 0; paint-order: stroke;
@@ -241,17 +226,29 @@ footer {
 #pathMap g.n.fail .nm   { fill: var(--fail); }
 #pathMap g.n.fail .halo { opacity: .55; stroke: var(--fail); animation: none; }
 
+/* 마우스 올린 노드 — halo 가 r=14 라 원(r=10)보다 넉넉한 과녁이 된다.
+ * fill 이 none 이어도 pointer-events:all 이면 안쪽까지 잡힌다. */
+#pathMap .halo { pointer-events: all; }
+#pathMap g.n { cursor: default; }
+#pathMap g.n:hover { opacity: 1; }
+#pathMap g.n:hover .nd { stroke-width: 3; }
+#pathMap g.n:hover .nm { font-weight: 600; }
+#pathMap g.n:hover .ni { fill: var(--text); }
+#pathMap g.n:hover .halo { opacity: .85; animation: none; }
+#pathMap g.n.cur:hover .halo { stroke: var(--accent); }
+#pathMap g.n.fail:hover .halo { stroke: var(--fail); }
+#pathMap g.n:not(.cur):not(.fail):hover .halo { stroke: var(--muted); }
+
 @media (prefers-reduced-motion: reduce) {
   #pathMap g.n.cur .halo { animation: none; opacity: .5; }
   #pathMap g.n, #pathMap g.e-g { transition: none; }
 }
 
-/* 배너 — 줄마다 위 세 가지에 그대로 대응한다. */
+/* 배너 — 줄이 그림의 두 색에 그대로 대응한다. */
 #mapLegend { line-height: 1.6; color: var(--text); }
 #mapLegend > div { font-size: 12.5px; }
 #mapLegend .curline  { color: var(--text); font-weight: 600; }
-#mapLegend .altline  { color: var(--ok); font-weight: 500; margin-top: 3px; }
 #mapLegend .failline { color: var(--fail); font-weight: 500; margin-top: 3px; }
+
 .lg-cur  { color: var(--accent); }
-.lg-alt  { color: var(--ok); }
 .lg-fail { color: var(--fail); }
