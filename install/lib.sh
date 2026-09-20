@@ -169,8 +169,23 @@ banner() {
 }
 
 # 역할이 이 스크립트 대상이 맞는지. 아니면 무엇을 실행해야 하는지 알려 준다.
+#
+# 탈출구: AADC_SKIP_ROLE_CHECK=1 로 검사를 건너뛸 수 있다.
+#   ★ 다만 이건 대개 원하는 결과를 주지 않는다. 검사만 꺼질 뿐
+#     AADC_ROLE 값 자체는 그대로이므로, 스크립트 안의 역할별 분기가
+#     아무것도 고르지 못하고 **조용히 넘어간다.** 설치가 된 것처럼
+#     끝나고 실제로는 아무 일도 일어나지 않는다.
+#   제대로 된 방법은 역할을 맞게 주는 것이다:  ./10-db.sh DB-MASTER
+#   지금 무엇이 어떻게 정해졌는지는 ./whoami.sh 가 보여 준다.
 require_role() {                 # require_role <glob> [<glob> ...]
   local pat
+  if [ "${AADC_SKIP_ROLE_CHECK:-}" = "1" ]; then
+    warn "역할 검사를 건너뛴다 (AADC_SKIP_ROLE_CHECK=1). 현재 역할=${AADC_ROLE}" \
+         "Role check bypassed. Current role is still '${AADC_ROLE}'."
+    msg  "역할이 틀리면 설치는 조용히 아무것도 하지 않는다. ./whoami.sh 로 확인할 것." \
+         "If the role is wrong this installs nothing, silently. Run ./whoami.sh."
+    return 0
+  fi
   for pat in "$@"; do
     # shellcheck disable=SC2254
     case "${AADC_ROLE}" in ${pat}) return 0 ;; esac
