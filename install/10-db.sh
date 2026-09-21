@@ -18,7 +18,7 @@ banner "DB 계층 (MariaDB)" "DB tier (MariaDB)"
 warn_temp_address
 
 step "MariaDB 설치" "Install MariaDB"
-dnf -y install mariadb-server mariadb >/dev/null
+ensure_pkg mariadb-server mariadb
 install -d -m 0755 -o mysql -g mysql /var/log/mariadb
 say "mariadb-server mariadb"
 
@@ -54,11 +54,21 @@ if [ "${TEMP_ADDRESS}" = "yes" ]; then
   msg "임시 주소라 구성하지 않는다. 정식 주소로 옮긴 뒤 다시 돌릴 것." \
       "Skipped on a temporary address. Re-run after moving to the real address."
   say "패키지만 미리 받아 둔다 / pre-fetching the package only"
-  dnf -y install keepalived >/dev/null || true
+  ensure_pkg keepalived || true
+
+elif [ "${KEEPALIVED_SETUP:-yes}" != "yes" ]; then
+  # 전제가 갖춰지기 전에 켜면 "켜져 있는데 동작 안 함"이 된다. 위 임시주소
+  # 분기와 같은 이유다. config.env 의 KEEPALIVED_SETUP 주석 참조.
+  step "keepalived" "keepalived"
+  msg "config.env 의 KEEPALIVED_SETUP=no — 구성하지 않는다." \
+      "KEEPALIVED_SETUP=no in config.env - skipping."
+  say "전제: DB-BACKUP(${DB_BACKUP_IP}) VM + 증인 GW ${GW_DC_DB} 의 ICMP 응답"
+  say "prerequisites: the DB-BACKUP VM, and ICMP replies from the witness gateway"
+  ensure_pkg keepalived || true
 
 elif [ "${AADC_ROLE}" = "DB-MASTER" ] || [ "${AADC_ROLE}" = "DB-BACKUP" ]; then
   step "keepalived (DC-500 내부 VIP)" "keepalived (VIP inside DC-500)"
-  dnf -y install keepalived >/dev/null
+  ensure_pkg keepalived
 
   install -m 0755 "${ROOT}/keepalived/bin/chk_db.sh"      /usr/local/bin/chk_db.sh
   install -m 0755 "${ROOT}/keepalived/bin/aadc-notify.sh" /usr/local/bin/aadc-notify.sh

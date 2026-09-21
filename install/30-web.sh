@@ -71,11 +71,7 @@ step "nginx 설치" "Install nginx"
 # 막혀 있어(FW-06/07/15/16) dnf 가 메타데이터를 못 받고 죽는다. set -e 라
 # 그 한 줄 때문에 설정 반영 전체가 중단된다 — 재실행이 잦은 스크립트라
 # 이 가드가 없으면 아무것도 고칠 수 없다.
-if rpm -q nginx >/dev/null 2>&1; then
-  say "already installed - dnf 생략 / skipped"
-else
-  dnf -y install nginx >/dev/null
-fi
+ensure_pkg nginx
 
 step "설정 배치" "Configuration"
 cp -a /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true

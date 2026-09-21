@@ -22,7 +22,7 @@ fi
 kv "app version" "${APP_VERSION}"
 
 step "패키지" "Packages"
-dnf -y install python3 python3-pip mariadb >/dev/null
+ensure_pkg python3 python3-pip mariadb
 say "python3 python3-pip mariadb"
 
 step "애플리케이션" "Application"

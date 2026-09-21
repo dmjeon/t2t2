@@ -181,6 +181,23 @@ msg()  { printf '   %s\n   %s\n' "$1" "$2"; }
 say()  { printf '   %s\n' "$*"; }
 kv()   { printf '   %-22s %s\n' "$1" "$2"; }
 warn() { printf '   !! %s\n   !! %s\n' "$1" "$2"; }
+
+# ensure_pkg <rpm 이름> [<추가 rpm> ...]
+#
+# 이미 깔려 있으면 dnf 를 부르지 않는다. PoC 환경은 패키지 저장소 경로가
+# 막혀 있어(FW-06/07/15/16) dnf 가 메타데이터를 못 받고 죽는다. 설치
+# 스크립트는 전부 `set -e` 라, 그 한 줄 때문에 **설정 반영 전체가 중단된다.**
+# 재실행이 잦은 스크립트들이므로 이 가드가 없으면 아무것도 고칠 수 없다.
+ensure_pkg() {
+  local missing=() p
+  for p in "$@"; do rpm -q "${p}" >/dev/null 2>&1 || missing+=("${p}"); done
+  if [ ${#missing[@]} -eq 0 ]; then
+    say "already installed - dnf 생략 / skipped: $*"
+    return 0
+  fi
+  say "installing: ${missing[*]}"
+  dnf -y install "${missing[@]}" >/dev/null
+}
 die()  { printf '\nERROR: %s\n       %s\n' "$1" "${2:-}" >&2; exit 1; }
 
 banner() {
