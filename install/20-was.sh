@@ -72,7 +72,13 @@ kv "/etc/aadc/was.env" "written (0640)"
 step "서비스" "Service"
 install -m 0644 "${ROOT}/app/systemd/aadc-was.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now aadc-was
+# ★ enable --now 는 이미 떠 있는 유닛에 아무것도 하지 않는다. was.env 는
+#   systemd 의 EnvironmentFile 이라 **기동 시점에만** 읽히므로, 재실행에서
+#   환경이 바뀌었는데도 반영이 안 되는 일이 생긴다. 2026-09-22 에 실제로
+#   그랬다 — config.env 를 mariadb 로 고치고 이 스크립트를 돌렸는데 앱은
+#   계속 sqlite 를 보고 있었다. 항상 재시작한다. (30-web.sh 는 이미 그런다)
+systemctl enable aadc-was
+systemctl restart aadc-was
 sleep 3
 systemctl is-active --quiet aadc-was && say "aadc-was running" \
   || { warn "aadc-was 기동 실패" "aadc-was failed to start"

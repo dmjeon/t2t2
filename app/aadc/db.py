@@ -98,20 +98,46 @@ class _MySQLPool:
         try:
             conn = self._idle.get_nowait()
         except queue.Empty:
+            # 슬롯을 먼저 잡고, 락을 놓은 뒤에 접속한다.
+            #
+            # ★ 접속이 실패하면 잡아 둔 슬롯을 반드시 되돌려야 한다. 되돌리지
+            #   않으면 실패가 그대로 누적돼 _created 가 _size 에 닿고, 그 뒤로는
+            #   영영 비어 있는 idle 큐만 기다리다 queue.Empty 를 낸다.
+            #   **DB 가 복구돼도 프로세스를 재시작할 때까지 못 붙는다.**
+            #
+            #   2026-09-22 실측(DC-400, 방화벽 13번 미개통 상태에서 헬스체크 반복):
+            #       1~6 회   OperationalError: (2003, "Can't connect ... timed out")
+            #       7 회~    "Empty: "  로 바뀌어 고정
+            #   DB failover 중 몇 초의 단절만으로 같은 상태가 되므로, 고치지
+            #   않으면 C3~C7(DB 전환) 이 통째로 무효다 — 넘어간 DC 가 영영
+            #   돌아오지 않아 GSLB 가 영구히 빼 버린다.
+            reserved = False
             with self._lock:
-                if self._created >= self._size:
-                    conn = self._idle.get(timeout=settings.db_connect_timeout)
-                else:
+                if self._created < self._size:
                     self._created += 1
-                    conn = None
-            if conn is None:
-                return self._connect()
+                    reserved = True
+            if reserved:
+                try:
+                    return self._connect()
+                except Exception:
+                    with self._lock:
+                        self._created -= 1
+                    raise
+            # 풀이 꽉 찼다. 반납을 기다린다 — 락을 쥔 채로 기다리지 않는다.
+            conn = self._idle.get(timeout=settings.db_connect_timeout)
         try:
             conn.ping(reconnect=True)
         except Exception:
             try: conn.close()
             except Exception: pass
-            conn = self._connect()
+            # 이 커넥션은 이미 _created 에 계상돼 있다. 재접속이 실패하면
+            # 그 몫도 여기서 돌려놔야 같은 고갈이 생기지 않는다.
+            try:
+                conn = self._connect()
+            except Exception:
+                with self._lock:
+                    self._created -= 1
+                raise
         return conn
 
     def release(self, conn, broken: bool):
