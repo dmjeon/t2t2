@@ -51,13 +51,27 @@ if [ "${UPSTREAM_MODE}" = "direct" ]; then
       "  With one WAS down nothing absorbs it; that becomes a DC outage."
 fi
 
+# 원본의 치환자 한 줄을 "<지시자> <값>;" 여러 줄로 펼쳐서 설치한다.
+# set_real_ip_from 과 allow 가 같은 모양이라 하나로 쓴다.
+gen_lines() {                     # gen_lines <지시자> "<값 목록>" <원본> <설치경로> <치환자>
+  local directive="$1" items="$2" src="$3" dst="$4" marker="$5" item
+  : > "${dst}"
+  while IFS= read -r line; do
+    if [ "${line}" = "${marker}" ]; then
+      for item in ${items}; do echo "${directive} ${item};" >> "${dst}"; done
+    else
+      echo "${line}" >> "${dst}"
+    fi
+  done < "${src}"
+  chmod 0644 "${dst}"
+}
+
 step "nginx 설치" "Install nginx"
 dnf -y install nginx >/dev/null
 
 step "설정 배치" "Configuration"
 cp -a /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
 install -m 0644 "${ROOT}/nginx/nginx.conf"               /etc/nginx/nginx.conf
-install -m 0644 "${ROOT}/nginx/conf.d/00-realip.conf"    /etc/nginx/conf.d/
 install -m 0644 "${ROOT}/nginx/conf.d/proxy-headers.inc" /etc/nginx/conf.d/
 
 # Rocky 기본 제공 예제 서버 블록과 충돌하므로 치운다.
@@ -80,26 +94,18 @@ sed -e "s/__SERVICE_FQDN__/${SERVICE_FQDN}/g" \
     -e "s#__UPSTREAM_TARGET__#${UPSTREAM_TARGET}#g" \
     "${ROOT}/nginx/conf.d/20-aadc-web.conf.template" > /etc/nginx/conf.d/20-aadc-web.conf
 
-# set_real_ip_from 을 config.env 의 FortiADC 주소로 맞춘다.
-sed -i -e "s/^set_real_ip_from  10\.3\.10\.241;/set_real_ip_from  ${DMZ_ADC_DC500};/" \
-       -e "s/^set_real_ip_from  10\.7\.10\.241;/set_real_ip_from  ${DMZ_ADC_DC400};/" \
-       /etc/nginx/conf.d/00-realip.conf
+# set_real_ip_from — config.env 의 FortiADC 주소 목록으로 생성한다.
+# 장비 한 대가 주소를 여러 개 쓰므로 단일 주소가 아니라 목록/대역이다.
+gen_lines "set_real_ip_from" "${DMZ_ADC_DC500} ${DMZ_ADC_DC400}" \
+          "${ROOT}/nginx/conf.d/00-realip.conf" \
+          /etc/nginx/conf.d/00-realip.conf "__REALIP_LINES__"
 say "10-upstream.conf  20-aadc-web.conf  00-realip.conf"
 
 step "접근 제어" "Access control"
 # 검증 화면은 DB writer 신원과 semi-sync 상태를 그대로 보여 준다.
 # WEB 은 인터넷에 노출되므로 관리 대역으로 한정한다.
 gen_acl() {                       # gen_acl "<CIDR 목록>" <원본> <설치경로> <치환자>
-  local cidrs="$1" src="$2" dst="$3" marker="$4" cidr
-  : > "${dst}"
-  while IFS= read -r line; do
-    if [ "${line}" = "${marker}" ]; then
-      for cidr in ${cidrs}; do echo "allow ${cidr};" >> "${dst}"; done
-    else
-      echo "${line}" >> "${dst}"
-    fi
-  done < "${src}"
-  chmod 0644 "${dst}"
+  gen_lines "allow" "$1" "$2" "$3" "$4"
 }
 gen_acl "${ADMIN_ALLOW}"  "${ROOT}/nginx/conf.d/acl-admin.inc" \
         /etc/nginx/conf.d/acl-admin.inc  "__ADMIN_ALLOW_LINES__"
