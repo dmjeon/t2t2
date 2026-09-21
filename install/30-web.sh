@@ -67,7 +67,15 @@ gen_lines() {                     # gen_lines <지시자> "<값 목록>" <원본
 }
 
 step "nginx 설치" "Install nginx"
-dnf -y install nginx >/dev/null
+# 이미 깔려 있으면 dnf 를 부르지 않는다. PoC 환경은 패키지 저장소 경로가
+# 막혀 있어(FW-06/07/15/16) dnf 가 메타데이터를 못 받고 죽는다. set -e 라
+# 그 한 줄 때문에 설정 반영 전체가 중단된다 — 재실행이 잦은 스크립트라
+# 이 가드가 없으면 아무것도 고칠 수 없다.
+if rpm -q nginx >/dev/null 2>&1; then
+  say "already installed - dnf 생략 / skipped"
+else
+  dnf -y install nginx >/dev/null
+fi
 
 step "설정 배치" "Configuration"
 cp -a /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
@@ -88,11 +96,28 @@ sed -e "s/__UPSTREAM_TARGET__/${UPSTREAM_TARGET}/g" \
     -e "s/__PEER_WEB_IP__/${PEER_WEB}/g" \
     "${ROOT}/nginx/conf.d/10-upstream.conf.template" > /etc/nginx/conf.d/10-upstream.conf
 
+# /health/deep 강제 200 (DEEP_FORCE_OK). 기본은 꺼짐 = 주석 한 줄만 들어간다.
+if [ "${DEEP_FORCE_OK:-no}" = "yes" ]; then
+  DEEP_FORCE_LINE="default_type application/json; return 200 '{\"check\":\"deep\",\"status\":\"ok\",\"forced\":true,\"note\":\"TEMPORARY - DB NOT verified\"}';"
+else
+  DEEP_FORCE_LINE="# DEEP_FORCE_OK=no - 앱의 /health/deep 을 그대로 프록시한다 (정상)"
+fi
+# 치환 구분자는 '|' 다. yes 값에는 '/'(application/json) 가, no 값에는 '#' 이
+# 들어 있어서 둘 다 구분자로 쓸 수 없다.
+
 sed -e "s/__SERVICE_FQDN__/${SERVICE_FQDN}/g" \
     -e "s/__WEB_FQDN__/${WEB_FQDN}/g" \
     -e "s/__UPSTREAM_MODE__/${UPSTREAM_MODE}/g" \
     -e "s#__UPSTREAM_TARGET__#${UPSTREAM_TARGET}#g" \
+    -e "s|__DEEP_FORCE_OK__|${DEEP_FORCE_LINE}|g" \
     "${ROOT}/nginx/conf.d/20-aadc-web.conf.template" > /etc/nginx/conf.d/20-aadc-web.conf
+
+if [ "${DEEP_FORCE_OK:-no}" = "yes" ]; then
+  warn "★ /health/deep 을 강제 200 으로 고정했다. GSLB 는 이 DC 를 늘 정상으로 본다." \
+       "/health/deep is FORCED to 200. The GSLB will never see this DC as unhealthy."
+  msg  "  failover·DB 관련 시나리오는 이 상태에서 전부 무의미하다. 끝나면 config.env 에서 no." \
+       "  All failover/DB scenarios are meaningless while this is on. Set it back to no."
+fi
 
 # set_real_ip_from — config.env 의 FortiADC 주소 목록으로 생성한다.
 # 장비 한 대가 주소를 여러 개 쓰므로 단일 주소가 아니라 목록/대역이다.
