@@ -191,11 +191,47 @@ else
   say "firewalld not running - skipped"
 fi
 
+step "파일 디스크립터 한도" "File descriptor limit"
+# nginx.conf 의 worker_rlimit_nofile 은 systemd 가 준 **하드 리밋**을 넘지
+# 못한다. 넘으려 하면 setrlimit 이 조용히 실패하고 1024 에 묶인 채로 돈다.
+# 그래서 서비스 단위에서 같이 올린다.
+NEED_RESTART="no"
+install -d -m 0755 /etc/systemd/system/nginx.service.d
+LIMITS=/etc/systemd/system/nginx.service.d/limits.conf
+NEW_LIMITS="$(printf '[Service]\nLimitNOFILE=32768\n')"
+if [ "$(cat "${LIMITS}" 2>/dev/null)" != "${NEW_LIMITS}" ]; then
+  printf '%s\n' "${NEW_LIMITS}" > "${LIMITS}"
+  chmod 0644 "${LIMITS}"
+  systemctl daemon-reload
+  NEED_RESTART="yes"          # LimitNOFILE 은 reload 로는 안 바뀐다
+  kv "LimitNOFILE" "32768 (신규/변경 - 재시작 필요)"
+else
+  kv "LimitNOFILE" "32768 (변경 없음)"
+fi
+
 step "기동" "Start"
 nginx -t
 systemctl enable --now nginx
-systemctl reload nginx
-say "nginx running"
+if [ "${NEED_RESTART}" = "yes" ]; then
+  systemctl restart nginx
+  say "nginx restarted (파일 디스크립터 한도 반영 / fd limit applied)"
+else
+  systemctl reload nginx
+  say "nginx reloaded"
+fi
+
+# 실제로 올라갔는지 확인한다. 설정만 넣고 안 올라간 경우를 잡는다.
+NGX_PID="$(cat /run/nginx.pid 2>/dev/null || true)"
+if [ -n "${NGX_PID}" ] && [ -r "/proc/${NGX_PID}/limits" ]; then
+  kv "실제 적용값 / effective" \
+     "$(awk '/Max open files/{print $4" (soft) / "$5" (hard)"}' "/proc/${NGX_PID}/limits")"
+fi
+if grep -q "worker_connections exceed open file resource limit" \
+     /var/log/nginx/error.log 2>/dev/null; then
+  warn "error.log 에 fd 한도 경고가 남아 있다 (과거 기록일 수 있다)." \
+       "The fd-limit warning is present in error.log (may be an older entry)."
+  say  "재시작 이후 시각의 경고인지 확인할 것 / check the timestamp"
+fi
 
 step "확인" "Check"
 curl -sf http://127.0.0.1/health/web | sed 's/^/   /' || warn "/health/web 실패" "/health/web failed"
