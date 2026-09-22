@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .config import settings
-from .routers import demo, health, info
+from .routers import demo, health, info, l4test
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +28,7 @@ app = FastAPI(
 app.include_router(info.router)
 app.include_router(health.router)
 app.include_router(demo.router)
+app.include_router(l4test.router)
 
 
 @app.middleware("http")
@@ -64,4 +65,4 @@ def root():
             "was_host": settings.node, "app_version": settings.app_version,
             "endpoints": ["/api/info", "/api/version", "/api/db/status",
                           "/api/db/write", "/api/db/read", "/api/load",
-                          "/health/deep", "/health/local"]}
+                          "/health/deep", "/health/local", "/l4test"]}

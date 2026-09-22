@@ -33,6 +33,16 @@ class Settings:
     web_prefix_dc500 = os.getenv("AADC_WEB_PREFIX_DC500", "10.3.11.")
     web_prefix_dc400 = os.getenv("AADC_WEB_PREFIX_DC400", "10.7.11.")
 
+    # ----- 내부 L4 (FortiADC) -----------------------------------------------
+    # 관측이 아니라 **기대값**이다. /l4test 화면이 "설치는 이렇게 됐는데 실제로
+    # 지나온 길은 저렇다"를 나란히 보여 주는 데만 쓴다. 판정 자체는 언제나
+    # req.client.host(= 앞 홉 주소) 로만 한다.
+    upstream_mode = os.getenv("AADC_UPSTREAM_MODE", "l4").lower()
+    l4_vip = os.getenv("AADC_L4_VIP", "")
+    check_vs_vip = os.getenv("AADC_CHECK_VS_VIP", "")
+    l4_port = _int("AADC_L4_PORT", 8000)
+    app_port = _int("AADC_APP_PORT", 8000)
+
     # mariadb | sqlite
     #   mariadb  본설계. DB VIP 직결.
     #   sqlite   임시. DB 서버에 접근할 수 없는 동안 WAS 로컬 파일로 대신한다.

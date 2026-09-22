@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # WAS 계층 설치 — WAS-APP1-500 (DC-500) / WAS-DC2 (DC-400)
-#   FastAPI (DB VIP 직결)
+#   FastAPI (DB VIP 직결) + 내부 L4 VIP 테스트 페이지 /l4test
 #   ./20-was.sh WAS-APP1-500
 # =============================================================================
 set -euo pipefail
@@ -10,6 +10,9 @@ AADC_ROLE_ARG="${1:-}"
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 require_bash
 require_role 'WAS-*'
+# 이 DC 의 L4 VIP / 점검 VS 를 얻는다. /l4test 화면이 "무엇을 때려야 하는가"를
+# 띄우는 데 쓴다 (L4_VIP, CHECK_VS, WAS_LOCAL).
+resolve_dc_vars
 
 banner "WAS 계층 (FastAPI)" "WAS tier (FastAPI)"
 if [ "${DB_MODE}" = "sqlite" ]; then
@@ -20,6 +23,10 @@ else
   kv "DB target"  "${DB_APP_TARGET}:${DB_PORT}"
 fi
 kv "app version" "${APP_VERSION}"
+kv "upstream mode" "${UPSTREAM_MODE}   ($( [ "${UPSTREAM_MODE}" = l4 ] \
+                       && echo 'WEB -> L4 VIP -> WAS' || echo 'WEB -> WAS 직결 (L4 우회)' ))"
+kv "local L4 VIP"  "${L4_VIP}:${L4_PORT}"
+kv "check VS VIP"  "${CHECK_VS}:${L4_PORT}"
 
 step "패키지" "Packages"
 ensure_pkg python3 python3-pip mariadb
@@ -50,6 +57,14 @@ AADC_L4_PREFIX_DC400=${L4_PREFIX_DC400}
 # L4 우회(direct) 모드 판정용. 앞 홉이 WEB 이면 L4 를 건너뛴 것이다.
 AADC_WEB_PREFIX_DC500=${WEB_PREFIX_DC500}
 AADC_WEB_PREFIX_DC400=${WEB_PREFIX_DC400}
+# /l4test 화면 표시 전용 — **기대값**이지 관측값이 아니다. 경로 판정은 언제나
+# 앞 홉 주소(req.client.host)로만 한다. 둘을 나란히 보여 주는 것이 목적이다:
+# "WEB 은 l4 로 설치됐는데 실제로 들어온 앞 홉은 WEB 주소다" 가 한눈에 보인다.
+AADC_UPSTREAM_MODE=${UPSTREAM_MODE}
+AADC_L4_VIP=${L4_VIP}
+AADC_CHECK_VS_VIP=${CHECK_VS}
+AADC_L4_PORT=${L4_PORT}
+AADC_APP_PORT=${APP_PORT}
 AADC_DB_MODE=${DB_MODE}
 AADC_SQLITE_PATH=${SQLITE_PATH}
 AADC_DB_HOST=${DB_APP_TARGET}
@@ -85,10 +100,13 @@ systemctl is-active --quiet aadc-was && say "aadc-was running" \
        journalctl -u aadc-was -n 15 --no-pager | sed 's/^/   /'; }
 
 step "방화벽" "Firewall"
+# L4 가 Full NAT 이면 WAS 에 도착하는 출발지는 WEB 이 아니라 L4 의 SNAT 주소다
+# (${L4_PREFIX_DC500} / ${L4_PREFIX_DC400}). 출발지를 좁혀 열면 L4 를 붙이는 순간
+# 전부 막히므로, 여기서는 포트만 연다. 세그먼트 통제는 앞단 방화벽이 한다.
 if systemctl is-active --quiet firewalld; then
   firewall-cmd --permanent --add-port="${APP_PORT}"/tcp >/dev/null
   firewall-cmd --reload >/dev/null
-  say "tcp/${APP_PORT} opened"
+  say "tcp/${APP_PORT} opened  (L4 SNAT 출발지 ${L4_PREFIX_DC500}/${L4_PREFIX_DC400} 포함)"
 else
   say "firewalld not running - skipped"
 fi
@@ -96,6 +114,12 @@ fi
 step "확인" "Check"
 curl -sf "http://127.0.0.1:${APP_PORT}/api/info"     | head -c 400 | sed 's/^/   /'; echo
 curl -sf "http://127.0.0.1:${APP_PORT}/health/local" | head -c 200 | sed 's/^/   /'; echo
+if curl -sf "http://127.0.0.1:${APP_PORT}/l4test" | grep -q "내부 L4 VIP 테스트"; then
+  say "/l4test 200 — 테스트 페이지 준비됨 / test page served"
+else
+  warn "/l4test 가 뜨지 않는다" "/l4test is not being served"
+  say  "앱 코드가 낡았을 수 있다: git pull 후 이 스크립트를 다시 돌릴 것"
+fi
 if curl -sf "http://127.0.0.1:${APP_PORT}/health/deep" >/dev/null; then
   msg "/health/deep 200 — writer 까지 경로가 뚫렸다." \
       "/health/deep 200 - the path to the writer is open."
@@ -104,6 +128,37 @@ else
        "/health/deep failed - check that the VIP holder has read_only=OFF"
   say  "mysql -h${DB_VIP} -e 'SELECT @@hostname, @@read_only'"
 fi
+
+cat <<L4TEST
+
+-------------------------------------------------------------------------------
+네트워크 팀에 넘길 테스트 페이지 / test page for the network team
+
+  이 WAS 직접 (기준선 — 반드시 먼저 이게 떠야 한다)
+      http://${WAS_LOCAL}:${APP_PORT}/l4test      -> "VIP 미경유" 로 뜨는 게 정상
+
+  내부 L4 VIP 를 잡은 뒤 / once the internal L4 VIP is up
+      http://${L4_VIP}:${L4_PORT}/l4test          -> 이 DC(${AADC_DC}) 의 WAS 가 받아야 정상
+      http://${CHECK_VS}:${L4_PORT}/l4test        -> 반대편 DC 의 WAS 가 받아야 정상 (C13)
+
+  화면 맨 위 한 줄만 보면 된다 / read only the banner at the top
+      초록 "VIP 경유 확인"   앞 홉이 ${L4_PREFIX_DC500}/${L4_PREFIX_DC400} = L4 를 탔다
+      주황 "VIP 미경유"      앞 홉이 WEB 주소 = L4 를 건너뛰었다
+      빨강 "판정 불가"       앞 홉이 어느 프리픽스도 아니다. 아래 둘을 의심할 것 —
+                             · L4 의 SNAT 풀 주소가 ${L4_PREFIX_DC500}/${L4_PREFIX_DC400} 밖이다
+                             · Full NAT 이 아니라 DNAT 만 걸려 있다 (응답이 L4 를 우회한다)
+
+  "20회 연속 호출" 버튼은 어느 멤버가 몇 번 받았는지 세어 준다.
+  한쪽으로만 몰리면 weight 또는 persistence(세션 고정)를 볼 것.
+
+  ★ 이 페이지는 nginx 를 거치지 않는다(WAS:${APP_PORT} 직결). 그래서 ADMIN_ALLOW /
+    basic 인증이 걸리지 않는다. 판정 근거는 /api/info 와 같은 값이므로 curl 로도 같다:
+        curl -s http://${L4_VIP}:${L4_PORT}/api/info
+
+  ★ 지금 UPSTREAM_MODE=${UPSTREAM_MODE} 다. WEB 이 실제로 VIP 로 보내려면
+    두 WEB 에서 ./30-web.sh 를 다시 돌려야 한다. 이 스크립트만으로는 안 바뀐다.
+-------------------------------------------------------------------------------
+L4TEST
 
 cat <<'NEXT'
 
