@@ -49,6 +49,44 @@ if [ "${UPSTREAM_MODE}" = "direct" ]; then
       "  Not verified in this mode: C12 (SNAT), C15 (backup), C18 (L4 failure)"
   msg "  WAS 1대가 죽으면 흡수 주체가 없다 — 그게 곧 DC 장애가 된다." \
       "  With one WAS down nothing absorbs it; that becomes a DC outage."
+else
+  # ----- L4 VIP 가 실제로 트래픽을 넘기는가 -----------------------------------
+  # 여기서 한 번 찔러 보지 않으면 nginx 가 죽은 VIP 를 바라본 채로 올라가고
+  # 서비스가 통째로 502 가 된다. 그런데 **GSLB 는 그걸 못 잡는다** — 헬스체크가
+  # /health/web 이고 그건 nginx 의 return 200 이라 upstream 을 아예 안 탄다
+  # (20-aadc-web.conf.template). 멤버는 계속 up 인 채로 실사용자만 502 를
+  # 받는다. 조용히 망가진다 — 이 전환에서 제일 위험한 지점이다.
+  #
+  # 설치를 막지는 않는다. VIP 를 아직 안 잡은 상태에서 나머지 설정만 먼저 넣어
+  # 두는 경우가 있고, 그때 set -e 로 죽으면 아무것도 고칠 수 없다. 대신
+  # 되돌리는 방법까지 같이 적어 둔다.
+  #
+  # 판정은 응답 코드가 아니라 **응답이 왔는가** 다. 404 든 502 든 뭔가
+  # 돌아왔다면 VIP 는 최소한 연결을 넘기고 있다. 000 만이 진짜 실패다.
+  echo
+  VIP_CODE="$(curl -so /dev/null -w '%{http_code}' -m 5 \
+                "http://${UPSTREAM_TARGET}/l4test" 2>/dev/null || true)"
+  [ -n "${VIP_CODE}" ] || VIP_CODE="000"
+  if [ "${VIP_CODE}" = "000" ]; then
+    warn "L4 VIP ${UPSTREAM_TARGET} 이 응답하지 않는다 (연결 자체가 안 된다)." \
+         "L4 VIP ${UPSTREAM_TARGET} did not answer at all."
+    msg  "  이대로 두면 이 WEB 은 전부 502 가 되는데 GSLB 는 못 잡는다 —" \
+         "  This WEB will return 502 for everything and the GSLB will not notice -"
+    msg  "  헬스체크(/health/web)가 upstream 을 타지 않기 때문이다." \
+         "  the health check (/health/web) never touches the upstream."
+    msg  "  되돌리기: config.env 에 UPSTREAM_MODE=\"direct\" 후 이 스크립트 재실행." \
+         "  To back out: set UPSTREAM_MODE=\"direct\" in config.env and re-run this script."
+    say  "  확인 순서 / check in order:"
+    say  "    1. L4 장비 전원          is the internal L4 powered on?"
+    say  "    2. VS 주소가 맞는가      ${L4_VIP}"
+    say  "    3. Full NAT(SNAT) 인가   DNAT 만이면 응답이 L4 를 우회한다"
+    say  "    4. SNAT 풀 주소가 장비 자신의 IP 와 겹치지 않는가"
+    say  "       (겹치면 헬스체크는 통과하는데 실트래픽만 죽는다 — 2026-09-22)"
+  else
+    kv "L4 VIP 응답" "HTTP ${VIP_CODE}   (${UPSTREAM_TARGET}/l4test)"
+    msg "VIP 가 응답을 돌려줬다 — 뒤에 리얼 서버가 붙어 있다는 뜻이다." \
+        "The VIP answered, so a real server is behind it."
+  fi
 fi
 
 # 원본의 치환자 한 줄을 "<지시자> <값>;" 여러 줄로 펼쳐서 설치한다.
