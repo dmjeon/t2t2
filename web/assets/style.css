@@ -180,17 +180,19 @@ footer {
 #pathMap .e.live    { stroke: var(--accent); }
 #pathMap .e.db      { stroke: var(--db); }
 #pathMap .e.idle    { stroke: var(--idle); stroke-dasharray: 6 4; }
-#pathMap .e.bypass  { stroke: var(--warn); stroke-dasharray: 7 4; }
+#pathMap .e.bypass  { stroke: var(--idle); stroke-width: 1.1; stroke-dasharray: 2.5 4.5; }
 #pathMap .e.thin    { stroke: var(--border); stroke-width: 1.2; }
 #pathMap .e.dash    { stroke-dasharray: 4 4; }
 #pathMap .el        { font: 500 10px -apple-system, "Noto Sans KR", sans-serif; fill: var(--muted); }
 #pathMap .el.live   { fill: var(--accent); }
 #pathMap .el.db     { fill: var(--db); }
 #pathMap .el.warn   { fill: var(--warn); }
+#pathMap .el.dim    { fill: var(--idle); font-size: 9px; }
 #pathMap .mk-live   { fill: var(--accent); }
 #pathMap .mk-db     { fill: var(--db); }
 #pathMap .mk-idle   { fill: var(--idle); }
 #pathMap .mk-warn   { fill: var(--warn); }
+#pathMap .mk-ok     { fill: var(--ok); }
 
 /* ---------------------------------------------------------------------------
  * 두 가지만 칠한다.
@@ -203,6 +205,18 @@ footer {
  * ------------------------------------------------------------------------- */
 #pathMap g.n, #pathMap g.e-g { opacity: .5; transition: opacity .18s; }
 #pathMap g.e-g { opacity: .38; }
+
+/* 우회(다이렉트) 경로는 배경보다 더 뒤로 뺀다.
+ *
+ * 이 선의 용도는 하나뿐이다 — VIP 가 안 될 때 "다이렉트는 된다" 를 보여 주는
+ * 것. 본설계가 아니므로 평소에는 눈에 걸리지 않아야 한다. 주황 점선으로 굵게
+ * 그려 두면 L4 경로와 같은 무게로 읽혀서, 그림만 보고 두 경로가 다 살아 있는
+ * 구성이라고 오해한다.
+ *
+ * 실제로 그 경로를 탔거나(cur) 못 갔으면(fail) 아래 규칙이 opacity 를 1 로
+ * 되돌린다 — 명시도가 같고 뒤에 오므로 그쪽이 이긴다. 즉 평소에는 희미하고,
+ * 의미가 생기는 순간에만 드러난다. */
+#pathMap g.e-g.bypass-g { opacity: .16; }
 #pathMap g.n.cur, #pathMap g.e-g.cur,
 #pathMap g.n.fail, #pathMap g.e-g.fail { opacity: 1; }
 
@@ -211,6 +225,14 @@ footer {
 #pathMap .halo { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: 0; }
 #pathMap g.n.cur .halo { opacity: 1; animation: aadcPulse 2.4s ease-out infinite; }
 @keyframes aadcPulse { 0% { r: 14; opacity: .85; } 100% { r: 22; opacity: 0; } }
+
+/* ①-b 평소엔 회색 점선인 경로(교차 멤버·다이렉트)가 실제로 쓰였을 때.
+ * opacity 만 1 로 올리면 회색 점선 그대로라 "지금 이 길로 간다"가 안 읽힌다.
+ * 현재 경로와 같은 실선·파랑으로 바꾼다. */
+#pathMap g.e-g.cur .e.idle,
+#pathMap g.e-g.cur .e.bypass { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; marker-end: url(#ah-live); }
+#pathMap g.e-g.cur .el.xl,
+#pathMap g.e-g.cur .el.dim   { fill: var(--accent); font-weight: 600; }
 
 /* ② 설정됐는데 실패 */
 #pathMap .brk {
@@ -249,8 +271,35 @@ footer {
 #mapLegend > div { font-size: 12.5px; }
 #mapLegend .curline  { color: var(--text); font-weight: 600; }
 #mapLegend .failline { color: var(--fail); font-weight: 500; margin-top: 3px; }
+#mapLegend .foline   { color: var(--ok); font-weight: 600; margin-top: 3px; }
 /* 권한 없음 = 판정 불가. 빨간색을 쓰지 않는다 — 고칠 대상이 다르다. */
 #mapLegend .denyline { color: var(--muted); font-weight: 400; margin-top: 3px; }
 
 .lg-cur  { color: var(--accent); }
 .lg-fail { color: var(--fail); }
+
+/* ③ failover — backup 멤버가 실제로 받아 처리 중.
+ *
+ * 로컬 WAS 쪽은 빨간 ✕ 로 남는다(고쳐야 할 것). 그 옆에서 넘겨받은 경로가
+ * 회색이면 화면이 "전부 빨강"으로 읽혀, 서비스는 살아 있는데 죽은 것처럼 보인다.
+ * 그래서 넘겨받은 쪽은 초록 굵은 선 + 흐르는 점선 + 배지로 가장 눈에 띄게 한다.
+ * 선택자에 .cur 를 같이 거는 것은 위 ①-b 보다 명시도를 높이기 위해서다. */
+#pathMap g.e-g.cur.fo .e {
+  stroke: var(--ok); stroke-width: 3; stroke-dasharray: 9 5;
+  marker-end: url(#ah-ok); animation: aadcFlow .9s linear infinite;
+}
+#pathMap g.e-g.cur.fo .el { fill: var(--ok); font-weight: 650; }
+#pathMap .fo-badge {
+  font: 700 10.5px -apple-system, "Noto Sans KR", sans-serif; fill: var(--ok);
+  opacity: 0; paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px;
+}
+#pathMap g.e-g.fo .fo-badge { opacity: 1; }
+/* 배지는 평소 라벨 자리에 겹쳐 있다. 전환 중에는 라벨을 치우고 배지만 남긴다. */
+#pathMap g.e-g.fo .el.xl    { opacity: 0; }
+#pathMap g.n.cur.fo .nd   { stroke: var(--ok); stroke-width: 3; }
+#pathMap g.n.cur.fo .nm   { fill: var(--ok); font-weight: 650; }
+#pathMap g.n.cur.fo .halo { stroke: var(--ok); }
+@keyframes aadcFlow { to { stroke-dashoffset: -14; } }
+@media (prefers-reduced-motion: reduce) {
+  #pathMap g.e-g.cur.fo .e, #pathMap g.n.cur .halo { animation: none; }
+}

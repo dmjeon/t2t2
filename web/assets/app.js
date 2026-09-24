@@ -272,11 +272,21 @@ const MAP_IDS = {
   left:  { gslb: 'n-gslb1', fg: 'n-fg1', web: 'n-web1', l4: 'n-l4vip1', fadc: 'n-fadc1a', was: 'n-was1',
            eIn: 'e-inet-gslb1', eGf: 'e-gslb1-fg1', eFw: 'e-fg1-web1',
            eWl: 'e-web1-l4', eLw: 'e-l4-was1', eDirect: 'e-web1-direct',
-           eFadc: 'e-fadc1a-vip', eCross: 'e-l4a-was2', eDb: 'e-was1-db' },
+           eFadc: 'e-fadc1a-vip', eCross: 'e-l4a-was2', eDb: 'e-was1-db', eWebX: 'e-fg1-web2' },
   right: { gslb: 'n-gslb2', fg: 'n-fg2', web: 'n-web2', l4: 'n-l4vip2', fadc: 'n-fadc2a', was: 'n-was2',
            eIn: 'e-inet-gslb2', eGf: 'e-gslb2-fg2', eFw: 'e-fg2-web2',
            eWl: 'e-web2-l4', eLw: 'e-l4-was2', eDirect: 'e-web2-direct',
-           eFadc: 'e-fadc2a-vip', eCross: 'e-l4b-was1', eDb: 'e-was2-db' },
+           eFadc: 'e-fadc2a-vip', eCross: 'e-l4b-was1', eDb: 'e-was2-db', eWebX: 'e-fg2-web1' },
+};
+
+/* WEB 은 NIC 이 둘이라 주소만으로는 "어느 DC 로 들어왔나"와 "어느 WEB 이 받았나"가
+ * 다르다 (NETWORK.md 4절). DMZ VS 는 자기 DC 대역 주소로 두 WEB 을 모두 멤버로 둔다.
+ *   DC-500 DMZ VS 10.3.10.241:80 → 10.3.11.51 (WEB-DC1) · 10.3.11.52 (WEB-DC2 ens224)
+ *   DC-400 DMZ VS 10.7.10.241:80 → 10.7.11.51 (WEB-DC1 ens224) · 10.7.11.52 (WEB-DC2)
+ * 접두사(10.3./10.7.)는 들어온 DC, 호스트 번호는 받은 WEB 이다. */
+const WEB_HOST = {
+  '10.3.11.51': 'left', '10.7.11.51': 'left',
+  '10.7.11.52': 'right', '10.3.11.52': 'right',
 };
 
 function mapText(id, txt, warn) {
@@ -297,10 +307,15 @@ function renderPathMap(infoR, layers) {
   const db   = (dbR && dbR.ok) ? (dbR.body || {}) : null;
 
   const addr = (web && web.web_addr) || '';
-  const dc = addr.startsWith('10.7.') ? 'DC-400'
-           : addr.startsWith('10.3.') ? 'DC-500'
-           : (info && info.l4_dc) || 'DC-500';
-  const left   = dc !== 'DC-400';
+  // 들어온 DC(= 어느 DMZ VS 를 탔나) 와 받은 WEB 을 따로 판정한다.
+  const entryLeft = addr.startsWith('10.7.') ? false
+                  : addr.startsWith('10.3.') ? true
+                  : !((info && info.l4_dc) === 'DC-400');
+  const hostSide  = WEB_HOST[addr] || (entryLeft ? 'left' : 'right');
+  const left   = hostSide === 'left';          // 이하 L4·WAS 는 받은 WEB 기준
+  const dc     = left ? 'DC-500' : 'DC-400';
+  const entry  = entryLeft ? MAP_IDS.left : MAP_IDS.right;
+  const webX   = (entryLeft !== left);         // DMZ VS 가 반대편 WEB 멤버로 보냈다
   const me     = left ? MAP_IDS.left : MAP_IDS.right;
   const other  = left ? MAP_IDS.right : MAP_IDS.left;
   const direct = !!((web && web.upstream_mode === 'direct') || (info && info.path_mode === 'direct'));
@@ -313,16 +328,19 @@ function renderPathMap(infoR, layers) {
    *   fail  설정은 되어 있는데 지금 못 가는 경로
    * 설정 자체가 없는 경로(예: L4 우회 중의 backup 멤버)는 fail 이 아니다.
    * 없는 것을 빨갛게 칠하면 고칠 것과 없는 것이 같은 색이 된다. */
-  const cur = [], fail = [];
-  const sCur = [], sFail = [], sDenied = [];
+  const cur = [], fail = [], fo = [];
+  const sCur = [], sFail = [], sDenied = [], sFo = [];
 
   // 어느 WEB 이 줬는지부터 모르면 아무것도 칠하지 않는다. 좌우를 찍어서
   // 칠하면 멀쩡한 쪽을 빨갛게 만들 수 있다.
   if (!web) {
     sFail.push('/health/web 무응답 — 이 화면을 준 WEB 을 판정할 수 없다');
   } else {
-    cur.push('n-inet', me.eIn, me.gslb, me.eGf, me.fg, me.eFw, me.web);
-    sCur.push(left ? 'WEB-DC1' : 'WEB-DC2');
+    cur.push('n-inet', entry.eIn, entry.gslb, entry.eGf, entry.fg,
+             webX ? entry.eWebX : entry.eFw, me.web);
+    sCur.push(webX
+      ? `${entryLeft ? 'DC-500' : 'DC-400'} DMZ → ${left ? 'WEB-DC1' : 'WEB-DC2'} (원격 멤버 ${addr})`
+      : (left ? 'WEB-DC1' : 'WEB-DC2'));
   }
 
   if (web && !info && isDenied(infoR)) {
@@ -350,9 +368,12 @@ function renderPathMap(infoR, layers) {
       sCur.push('L4 VIP ' + ((web && web.upstream_target) || '?'));
       if (cross) {
         // 이미 교차로 넘어가 있다. 그러면 로컬 멤버 쪽이 "설정됐는데 못 가는" 경로다.
+        // 넘겨받은 쪽은 fo 로 따로 표시한다. 로컬만 빨갛고 넘겨받은 쪽이 회색이면
+        // 서비스가 살아 있는데도 화면 전체가 "실패"로 읽힌다.
         cur.push(me.eCross, other.was);
+        fo.push(me.eCross, other.was);
         fail.push(me.eLw, me.was);
-        sFail.push('로컬 WAS 무응답 — backup 멤버로 넘어가 있다 (degraded)');
+        sFo.push(`로컬 WAS 무응답 → ${wasDc} ${info.was_host || 'WAS'} 가 backup 멤버로 처리 중 (degraded — 로컬 WAS 복구 필요)`);
       } else {
         cur.push(me.eLw, me.was);
       }
@@ -398,21 +419,23 @@ function renderPathMap(infoR, layers) {
     sFail.push(`${otherDc} deep 실패 (${peerBody.reason || 'fail'}) — 이동 대상으로 못 쓴다`);
   }
 
-  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('cur', 'fail'));
+  svg.querySelectorAll('g.n, g.e-g').forEach((g) => g.classList.remove('cur', 'fail', 'fo'));
   const paint = (ids, cls) => ids.forEach((id) => {
     const g = document.getElementById(id);
     // 지나간 길이 우선이다. 현재 경로로 칠한 것은 덮어쓰지 않는다.
     if (g && !g.classList.contains('cur')) g.classList.add(cls);
   });
   paint(cur, 'cur'); paint(fail, 'fail');
+  fo.forEach((id) => { const g = document.getElementById(id); if (g) g.classList.add('fo'); });
 
   /* 라벨은 살아 있는 값으로 바꾼다. 고정 문구를 두면 실제와 다른 주소를 믿게 된다. */
   mapText('t-web1', left && addr ? addr : '10.3.11.51');
   mapText('t-web2', !left && addr ? addr : '10.7.11.52');
+  // VIP 라벨은 받은 WEB 기준이다 (그 WEB 의 nginx 가 자기 DC 의 L4 VIP 를 본다).
   const vipTxt = (web && web.upstream_target) ? String(web.upstream_target).split(':')[0] : null;
   const vipOk = !direct && !!vipTxt;
-  mapText('t-l4vip1', (left && vipOk) ? vipTxt : '10.3.20.x · 미회신');
-  mapText('t-l4vip2', (!left && vipOk) ? vipTxt : '10.7.20.x · 미회신');
+  mapText('t-l4vip1', (left && vipOk) ? vipTxt : '10.3.20.100');
+  mapText('t-l4vip2', (!left && vipOk) ? vipTxt : '10.7.20.100');
   if (info && info.was_host) mapText(wasDc === 'DC-400' ? 't-was2' : 't-was1', info.was_host);
   mapText('t-dbtarget', db ? (db.db_target || '?') : '—');
   mapText('t-writer', (db && db.writer && db.writer.hostname) || 'DB writer');
@@ -423,13 +446,15 @@ function renderPathMap(infoR, layers) {
         : 'rw · semi=' + ((db.semi_sync && db.semi_sync.Rpl_semi_sync_master_status) || '?'));
 
   const legend = $('#mapLegend');
-  legend.className = 'banner ' + (sFail.length ? 'fail' : (sDenied.length ? 'warn' : 'ok'));
+  // failover 만 걸린 상태는 "실패"가 아니라 "degraded" 다 — 서비스는 돌고 있다.
+  legend.className = 'banner ' + (sFail.length ? 'fail' : ((sFo.length || sDenied.length) ? 'warn' : 'ok'));
   legend.replaceChildren();
   legend.appendChild(el('div', 'curline', '현재  ' + (sCur.join('  →  ') || '판정 불가')));
+  if (sFo.length)     legend.appendChild(el('div', 'foline', '전환  ' + sFo.join(' / ')));
   if (sFail.length)   legend.appendChild(el('div', 'failline', '실패  ' + sFail.join(' / ')));
   if (sDenied.length) legend.appendChild(el('div', 'denyline',
     '권한 없음  ' + sDenied.join(' / ') + ' — 막힌 것이 아니라 못 본 것이다'));
-  track('pathmap', (sFail.length ? 'FAIL:' + sFail.length : 'OK') + '/' + sCur.join('>'), '활성 경로');
+  track('pathmap', (sFail.length ? 'FAIL:' + sFail.length : sFo.length ? 'FAILOVER' : 'OK') + '/' + sCur.join('>'), '활성 경로');
 }
 
 /* ---------- 3. 분포 ---------- */
