@@ -111,8 +111,7 @@ label_of() {
     "${PREFIX}231") echo "internal-fortiadc-01 관리 IP (VIP 아님, FW-11 출발지)" ;;
     "${PREFIX}232") echo "internal-fortiadc-02 관리 IP (VIP 아님, 만료·정지 상태)" ;;
     "${PREFIX}254") echo "세그먼트 게이트웨이 (VIP 아님)" ;;
-    "${DC500_L4_VIP}"|"${DC400_L4_VIP}")         echo "config.env 의 <<TBD>> 더미값" ;;
-    "${DC500_CHECK_VS_VIP}"|"${DC400_CHECK_VS_VIP}") echo "config.env 의 <<TBD>> 더미값 (점검 VS)" ;;
+    "${DC500_L4_VIP}"|"${DC400_L4_VIP}")         echo "config.env 의 L4 VIP (09-24 장비 확인)" ;;
     *) echo "" ;;
   esac
 }

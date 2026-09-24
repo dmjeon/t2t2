@@ -24,7 +24,7 @@ fi
 
 if need_l4 "R3"; then
   L4="http://${DC500_L4_VIP}:${L4_PORT}"
-  CHK="http://${DC500_CHECK_VS_VIP}:${L4_PORT}"
+  CHK="http://${DC500_BACKUP_MEMBER}:${APP_PORT}"   # L4 풀의 원격 멤버 직접
 
   hdr "R3  L4 로컬 멤버"
   body=$(get "${L4}/api/info")
@@ -41,14 +41,14 @@ if need_l4 "R3"; then
     note "그 구성에서는 응답이 L4 를 우회해 연결이 끊긴다 (5-1절)."
   fi
 
-  hdr "C13  backup 멤버 점검 VS"
+  hdr "C13  backup 멤버 (L4 풀 원격 멤버 직접)"
   body=$(get "${CHK}/api/info")
   if [ -z "${body}" ]; then
-    ng "C13" "${CHK}/api/info 호출 실패 — 교차 멤버 경로가 죽어 있다. WAS 장애 시 흡수 불가."
+    ng "C13" "${CHK}/api/info 호출 실패 — backup 멤버가 죽어 있다. WAS 장애 시 흡수 불가."
   else
     was_host=$(jqget "${body}" was_host)
     was_dc=$(jqget "${body}" was_dc)
-    assert_eq "C13" "DC-400" "${was_dc}" "점검 VS 가 교차 멤버(WAS-DC2)에 닿는가 (was_host=${was_host})"
+    assert_eq "C13" "DC-400" "${was_dc}" "backup 멤버가 WAS-DC2 인가 (was_host=${was_host})"
   fi
 fi
 

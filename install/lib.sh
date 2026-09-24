@@ -261,11 +261,11 @@ ROLEMISMATCH
 # 이 DC 기준의 로컬/교차 값.
 resolve_dc_vars() {
   if [ "${AADC_DC}" = "DC-500" ]; then
-    L4_VIP="${DC500_L4_VIP}";      CHECK_VS="${DC500_CHECK_VS_VIP}"
+    L4_VIP="${DC500_L4_VIP}";      BACKUP_MEMBER="${DC500_BACKUP_MEMBER}"
     WAS_LOCAL="${WAS_DC500_IP}";   PEER_WEB="${WEB_DC2_IP}"
     WEB_FQDN="${WEB1_FQDN}"
   else
-    L4_VIP="${DC400_L4_VIP}";      CHECK_VS="${DC400_CHECK_VS_VIP}"
+    L4_VIP="${DC400_L4_VIP}";      BACKUP_MEMBER="${DC400_BACKUP_MEMBER}"
     WAS_LOCAL="${WAS_DC400_IP}";   PEER_WEB="${WEB_DC1_IP}"
     WEB_FQDN="${WEB2_FQDN}"
   fi

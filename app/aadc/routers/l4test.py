@@ -49,7 +49,7 @@ def _config_view() -> dict:
         # config.env 의 UPSTREAM_MODE. **기대값**이지 관측값이 아니다.
         "upstream_mode": settings.upstream_mode,
         "l4_vip": settings.l4_vip,
-        "check_vs_vip": settings.check_vs_vip,
+        "backup_member": settings.backup_member,
         "l4_port": settings.l4_port,
         "app_port": settings.app_port,
         "l4_prefix_dc500": settings.l4_prefix_dc500,
@@ -255,7 +255,7 @@ function renderCfg(){
     ["이 DC / this DC",            CFG.was_dc],
     ["이 WAS / this WAS",          CFG.was_host],
     ["로컬 L4 VIP",                CFG.l4_vip + ":" + CFG.l4_port],
-    ["점검 VS VIP / check VS",     CFG.check_vs_vip + ":" + CFG.l4_port],
+    ["backup 멤버 / backup member", CFG.backup_member + ":" + CFG.app_port],
     ["WAS 포트 / app port",        CFG.app_port],
     ["L4 프리픽스 DC-500",         CFG.l4_prefix_dc500],
     ["L4 프리픽스 DC-400",         CFG.l4_prefix_dc400],
@@ -265,7 +265,7 @@ function renderCfg(){
 
   var u = [
     [CFG.l4_vip + ":" + CFG.l4_port, "로컬 L4 VIP — " + CFG.was_dc + " 의 WAS 가 받아야 정상"],
-    [CFG.check_vs_vip + ":" + CFG.l4_port, "점검 VS — " + CFG.peer_dc + " 의 WAS 가 받아야 정상 (C13)"]
+    [CFG.backup_member + ":" + CFG.app_port, "backup 멤버 직접 — " + CFG.peer_dc + " 의 WAS 가 받아야 정상 (C13, L4 미경유)"]
   ];
   document.getElementById("urls").innerHTML = u.map(function(x){
     var href = "http://" + x[0] + "/l4test";

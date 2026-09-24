@@ -39,7 +39,8 @@ class Settings:
     # req.client.host(= 앞 홉 주소) 로만 한다.
     upstream_mode = os.getenv("AADC_UPSTREAM_MODE", "l4").lower()
     l4_vip = os.getenv("AADC_L4_VIP", "")
-    check_vs_vip = os.getenv("AADC_CHECK_VS_VIP", "")
+    # 이 DC L4 풀의 원격(backup) 멤버 주소. 점검 전용 VS 대신 직접 부른다.
+    backup_member = os.getenv("AADC_BACKUP_MEMBER", "")
     l4_port = _int("AADC_L4_PORT", 8000)
     app_port = _int("AADC_APP_PORT", 8000)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 1분 주기 외부 점검 — 모니터링 또는 점프서버에서 실행
-# AADC-POC.md 3-1절(검증 FQDN) + 3-3절(점검 전용 VS)
+# AADC-POC.md 3-1절(검증 FQDN) + backup 멤버 직접 점검
 #
 # GSLB 1% 만으로는 야간에 DC-400 이 몇 시간씩 검증 공백에 빠진다.
 # backup 멤버는 평시 트래픽이 아예 0 이라 장애 순간에야 동작 여부를 알게 된다.
@@ -32,12 +32,15 @@ check() {                       # check <이름> <URL> <실패 시 의미>
 check "web1 (DC-500)" "https://${WEB1_FQDN}/api/info"  "DC-500 WEB 계층 도달 불가"
 check "web2 (DC-400)" "https://${WEB2_FQDN}/api/info"  "DC-400 WEB 계층 도달 불가. 1% 야간 공백 구간"
 
-# ----- 점검 전용 VS : backup(교차) 멤버가 살아 있는가 ------------------------
+# ----- backup(교차) 멤버가 살아 있는가 ---------------------------------------
 # 여기가 죽으면 "장애 시 넘어갈 곳"이 이미 없는 것이다. 즉시 알람.
-check "DC-500 점검 VS"  "http://${DC500_CHECK_VS_VIP}:${L4_PORT}/api/info" \
-      "DC-500 L4 의 backup 멤버(WAS-DC2) 경로가 죽었다. WAS 장애 시 흡수 불가"
-check "DC-400 점검 VS"  "http://${DC400_CHECK_VS_VIP}:${L4_PORT}/api/info" \
-      "DC-400 L4 의 backup 멤버(WAS-APP1-500) 경로가 죽었다"
+# 각 WEB 의 /checkvs/ 를 부른다 — WEB 이 L4 풀의 원격 멤버 주소를 직접 부르므로
+# 모니터링 서버가 서버 대역에 닿을 필요가 없고, 실서비스 경로와 같은 곳에서 본다.
+# (점검 전용 VS 는 폐기했다 — config.env DC*_BACKUP_MEMBER 주석)
+check "DC-500 backup 멤버" "https://${WEB1_FQDN}/checkvs/api/info" \
+      "DC-500 L4 의 backup 멤버(${DC500_BACKUP_MEMBER}, WAS-DC2) 무응답. WAS 장애 시 흡수 불가"
+check "DC-400 backup 멤버" "https://${WEB2_FQDN}/checkvs/api/info" \
+      "DC-400 L4 의 backup 멤버(${DC400_BACKUP_MEMBER}, WAS-APP1-500) 무응답"
 
 # ----- 서비스 FQDN : GSLB 가 IP 를 돌려주는가 (SERVFAIL 아님) ----------------
 # 전 멤버 실패 시 fallback 이 동작하지 않으면 SERVFAIL 이 나가는데 502 보다 나쁘다.

@@ -28,10 +28,10 @@ upstream was_local_direct {
     keepalive 4;
 }
 
-# 교차(backup) 멤버 점검 (AADC-POC.md 3-3절).
-#   l4     모드: 교차 멤버만 담은 점검 전용 가상 서버
-#   direct 모드: 반대편 WAS 를 직접 — L4 는 못 보지만 peer-routing 도달성은
-#                여전히 검증된다 (R1/R2). 그것만으로도 둘 데 값이 있다.
+# 교차(backup) 멤버 직접 점검 — /checkvs/ 가 쓴다.
+# L4 풀의 원격 멤버 주소(config.env DC*_BACKUP_MEMBER)를 L4 를 거치지 않고 부른다.
+# "L4 가 넘어갈 곳이 살아 있는가"를 L4 가 쓰는 바로 그 주소로 확인한다.
+# 점검 전용 VS(10.x.20.101)를 두려던 설계는 폐기했다 — 장비에 만들지 않았다.
 upstream was_check_vs {
     server __CHECK_TARGET__ max_fails=0;
 }
