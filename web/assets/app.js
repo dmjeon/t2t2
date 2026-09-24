@@ -341,6 +341,15 @@ function renderPathMap(infoR, layers) {
     sCur.push(webX
       ? `${entryLeft ? 'DC-500' : 'DC-400'} DMZ → ${left ? 'WEB-DC1' : 'WEB-DC2'} (원격 멤버 ${addr})`
       : (left ? 'WEB-DC1' : 'WEB-DC2'));
+    if (webX) {
+      // WAS 교차와 같은 취급이다. DMZ VS 도 로컬 WEB 이 주 멤버이고 원격 WEB 은
+      // backup 이라는 전제다 — 원격으로 왔다는 것은 로컬 WEB 이 빠졌다는 뜻이다.
+      // (DMZ VS 를 라운드로빈으로 바꾸면 이 전제가 깨진다. 그때는 이 블록을 뺄 것)
+      const entryWeb = entryLeft ? 'WEB-DC1' : 'WEB-DC2';
+      fo.push(entry.eWebX, me.web);
+      fail.push(entry.eFw, other.web);
+      sFo.push(`${entryLeft ? 'DC-500' : 'DC-400'} DMZ — 로컬 ${entryWeb} 무응답 → ${left ? 'WEB-DC1' : 'WEB-DC2'} 가 원격 멤버(${addr})로 처리 중 (degraded — ${entryWeb} 복구 필요)`);
+    }
   }
 
   if (web && !info && isDenied(infoR)) {

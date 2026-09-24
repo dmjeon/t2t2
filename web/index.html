@@ -56,9 +56,9 @@
 
 <g class="e-g" id="e-inet-gslb1"><line class="e live" x1="657" y1="70" x2="403" y2="140" marker-end="url(#ah-live)"/><text class="brk" x="530" y="109">✕</text></g>
 <g class="e-g" id="e-gslb1-fg1"><line class="e live" x1="390" y1="163" x2="390" y2="227" marker-end="url(#ah-live)"/><text class="el live" x="398" y="199">DNS 99%</text></g>
-<g class="e-g" id="e-fg1-web1"><line class="e live" x1="390" y1="253" x2="390" y2="332" marker-end="url(#ah-live)"/><text class="el live" x="398" y="296">TCP 80/443</text></g>
-<g class="e-g" id="e-fg1-web2"><polyline class="e idle" points="401,240 455,240 455,282 925,282 940,336" marker-end="url(#ah-idle)"/><text class="el xl" x="565" y="275" text-anchor="middle">DMZ VS → 원격 WEB 10.3.11.52 (L2)</text><text class="brk" x="672" y="286">✕</text></g>
-<g class="e-g" id="e-fg2-web1"><polyline class="e idle" points="939,240 885,240 885,308 425,308 403,336" marker-end="url(#ah-idle)"/><text class="el xl" x="790" y="322" text-anchor="middle">DMZ VS → 원격 WEB 10.7.11.51 (L2)</text><text class="brk" x="672" y="312">✕</text></g>
+<g class="e-g" id="e-fg1-web1"><line class="e live" x1="390" y1="253" x2="390" y2="332" marker-end="url(#ah-live)"/><text class="el live" x="398" y="296">TCP 80/443</text><text class="brk" x="390" y="299">✕</text></g>
+<g class="e-g" id="e-fg1-web2"><polyline class="e idle" points="401,240 455,240 455,282 925,282 940,336" marker-end="url(#ah-idle)"/><text class="el xl" x="565" y="275" text-anchor="middle">DMZ VS → 원격 WEB 10.3.11.52 (L2)</text><text class="fo-badge" x="565" y="275" text-anchor="middle">▶ FAILOVER · 원격 WEB 멤버 활성</text><text class="brk" x="672" y="286">✕</text></g>
+<g class="e-g" id="e-fg2-web1"><polyline class="e idle" points="939,240 885,240 885,308 425,308 403,336" marker-end="url(#ah-idle)"/><text class="el xl" x="790" y="322" text-anchor="middle">DMZ VS → 원격 WEB 10.7.11.51 (L2)</text><text class="fo-badge" x="790" y="322" text-anchor="middle">▶ FAILOVER · 원격 WEB 멤버 활성</text><text class="brk" x="672" y="312">✕</text></g>
 <g class="e-g" id="e-web1-l4"><line class="e live" x1="390" y1="358" x2="390" y2="442" marker-end="url(#ah-live)"/><text class="el live" x="398" y="404">VIP 경로 · 8000</text><text class="brk" x="390" y="406">✕</text></g>
 <g class="e-g" id="e-l4-was1"><line class="e live" x1="390" y1="468" x2="390" y2="562" marker-end="url(#ah-live)"/><text class="el live" x="398" y="548">weight 100 · Full NAT</text><text class="brk" x="390" y="519">✕</text></g>
 <g class="e-g bypass-g" id="e-web1-direct"><polyline class="e bypass" points="378,352 330,400 330,530 378,568" marker-end="url(#ah-idle)"/><text class="el dim" x="322" y="415" text-anchor="end">다이렉트 · L4 우회</text><text class="brk" x="330" y="469">✕</text></g>
@@ -66,7 +66,7 @@
 
 <g class="e-g" id="e-inet-gslb2"><line class="e live" x1="683" y1="70" x2="937" y2="140" marker-end="url(#ah-live)"/><text class="brk" x="810" y="109">✕</text></g>
 <g class="e-g" id="e-gslb2-fg2"><line class="e live" x1="950" y1="163" x2="950" y2="227" marker-end="url(#ah-live)"/><text class="el live" x="958" y="199">DNS 1%</text></g>
-<g class="e-g" id="e-fg2-web2"><line class="e live" x1="950" y1="253" x2="950" y2="332" marker-end="url(#ah-live)"/><text class="el live" x="958" y="296">TCP 80/443</text></g>
+<g class="e-g" id="e-fg2-web2"><line class="e live" x1="950" y1="253" x2="950" y2="332" marker-end="url(#ah-live)"/><text class="el live" x="958" y="296">TCP 80/443</text><text class="brk" x="950" y="299">✕</text></g>
 <g class="e-g" id="e-web2-l4"><line class="e live" x1="950" y1="358" x2="950" y2="442" marker-end="url(#ah-live)"/><text class="el live" x="958" y="404">VIP 경로 · 8000</text><text class="brk" x="950" y="406">✕</text></g>
 <g class="e-g" id="e-l4-was2"><line class="e live" x1="950" y1="468" x2="950" y2="562" marker-end="url(#ah-live)"/><text class="el live" x="958" y="548">weight 100 · Full NAT</text><text class="brk" x="950" y="519">✕</text></g>
 <g class="e-g bypass-g" id="e-web2-direct"><polyline class="e bypass" points="962,352 1010,400 1010,530 962,568" marker-end="url(#ah-idle)"/><text class="el dim" x="1018" y="415">다이렉트 · L4 우회</text><text class="brk" x="1010" y="469">✕</text></g>
