@@ -1,8 +1,8 @@
 /* =============================================================================
  * AADC PoC 검증 화면
  *
- * 브라우저가 직접 두드리는 것은 자기 WEB 하나뿐이다. 나머지(backup 멤버, 반대편 DC)는
- * nginx 가 /checkvs/, /peer/ 로 대신 물어본다. CORS 를 피하려는 것도 있지만,
+ * 브라우저가 직접 두드리는 것은 자기 WEB 하나뿐이다. 반대편 DC 는
+ * nginx 가 /peer/ 로 대신 물어본다. CORS 를 피하려는 것도 있지만,
  * 더 중요한 이유는 **실제 서비스 경로와 같은 곳에서 본 결과**여야 의미가 있기 때문이다.
  * ============================================================================= */
 'use strict';
@@ -115,13 +115,6 @@ const LAYERS = [
   { id: 'local', name: '/health/local', url: '/health/local',
     desc: '알람 전용. GSLB 는 보지 않는다. 실패 = backup 으로 넘어가 있다.',
     detail: (b) => `${b.was_host || '?'} (${b.dc || '?'})` },
-
-  /* backup 멤버 직접 점검 (C13). 2026-09-24 에 점검 전용 VS 대신 이 방식으로 바꿨다.
-   * WEB 이 L4 풀의 원격 멤버 주소를 L4 없이 부른다 — "넘어갈 곳이 살아 있는가".
-   * L4 의 전환 동작 자체는 실제로 넘어갔을 때 경로도의 FAILOVER 로 본다. */
-  { id: 'checkvs', name: 'backup 멤버', url: '/checkvs/api/info',
-    desc: 'L4 풀의 원격 멤버를 직접 부른다. 죽어 있으면 로컬 WAS 장애를 흡수할 곳이 없다.',
-    detail: (b) => `${b.was_host || '?'} / ${b.was_dc || '?'}` },
 
   { id: 'db',    name: 'DB writer', url: '/api/db/status',
     desc: 'semi-sync 가 OFF 면 RPO 가 깨진 채로 조용히 돌고 있는 것이다.',
@@ -304,7 +297,7 @@ function renderPathMap(infoR, layers) {
   if (!svg) return;
 
   const webR = layers.web, deepR = layers.deep;
-  const cvR  = layers.checkvs, peerR = layers.peer, dbR = layers.db;
+  const peerR = layers.peer, dbR = layers.db;
   const web  = (webR && webR.ok) ? (webR.body || {}) : null;
   const info = (infoR && infoR.ok) ? (infoR.body || {}) : null;
   const db   = (dbR && dbR.ok) ? (dbR.body || {}) : null;
@@ -408,24 +401,11 @@ function renderPathMap(infoR, layers) {
 
   /* 설정은 되어 있는데 못 가는 경로 — 이 WEB 에서 **판정할 수 있는 것만** 센다.
    *
-   * ① backup 멤버 — /checkvs/ 가 L4 풀의 원격 멤버 주소를 직접 부른다.
-   *    L4 를 거치지 않으므로 "L4 가 넘길 수 있다"가 아니라 "넘어갈 곳이 살아
-   *    있다"만 말한다. 이미 교차로 넘어가 있으면(cross) 그게 더 강한 증거이므로
-   *    보지 않는다. direct 모드에서는 L4 backup 자체가 없으므로 보지 않는다.
-   *    (이전의 점검 전용 VS 방식은 VS 가 없어 늘 504 → 늘 빨강이었다.)
-   * ② 반대편 DC — 앱이 deep 응답을 돌려줬을 때만. 못 닿은 것은 WEB 끼리
+   * backup(교차) 멤버는 평시에 판정하지 않는다 (2026-09-24). 실제로 넘어갔을 때
+   *    위의 cross 분기가 FAILOVER 로 칠하는 것으로 확인한다.
+   * 반대편 DC — 앱이 deep 응답을 돌려줬을 때만. 못 닿은 것은 WEB 끼리
    * 라우팅 경로가 없다는 뜻이고, 그건 GSLB 가 밖에서 볼 일이지 이 서버가
    * 보고할 일이 아니다. 여기를 빨갛게 칠하면 멀쩡한 DC 를 죽었다고 보고한다. */
-  const cvHost = (cvR && cvR.ok && cvR.body && cvR.body.was_host) || null;
-  if (web && info && !cross && !direct && !cvHost) {
-    const bm = (web.check_target || '').split(':')[0] || 'backup 멤버';
-    if (isDenied(cvR)) {
-      sDenied.push('/checkvs/ (ADMIN_ALLOW)');
-    } else {
-      fail.push(me.eCross, other.was);
-      sFail.push(`backup 멤버 ${bm} 무응답 — 지금 로컬 WAS 가 죽으면 흡수할 곳이 없다`);
-    }
-  }
 
   const otherDc  = left ? 'DC-400' : 'DC-500';
   const peerBody = (peerR && peerR.body) || {};

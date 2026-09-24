@@ -26,15 +26,10 @@ case "${UPSTREAM_MODE:-l4}" in
   *) die "UPSTREAM_MODE 는 l4 또는 direct" "UPSTREAM_MODE must be l4 or direct (got '${UPSTREAM_MODE}')" ;;
 esac
 
-# /checkvs/ — L4 풀의 원격(backup) 멤버를 WEB 이 직접 부른다. 모드와 무관하다.
-# 점검 전용 VS 를 두지 않기로 했다 (config.env DC*_BACKUP_MEMBER 주석).
-CHECK_TARGET="${BACKUP_MEMBER}:${APP_PORT}"
-
 kv "upstream mode" "${UPSTREAM_MODE}"
 kv "upstream target" "${UPSTREAM_TARGET}"
 kv "local L4 VIP"  "${L4_VIP}   $( [ "${UPSTREAM_MODE}" = direct ] && echo '(BYPASSED)' )"
 kv "local WAS"     "${WAS_LOCAL}   (/health/local direct target)"
-kv "backup member" "${CHECK_TARGET}   (/checkvs/ 직접 점검, L4 미경유)"
 kv "peer WEB"      "${PEER_WEB}"
 kv "server_name"   "${SERVICE_FQDN} ${WEB_FQDN}"
 
@@ -121,7 +116,6 @@ if [ -f /etc/nginx/conf.d/default.conf ]; then
 fi
 
 sed -e "s/__UPSTREAM_TARGET__/${UPSTREAM_TARGET}/g" \
-    -e "s/__CHECK_TARGET__/${CHECK_TARGET}/g" \
     -e "s/__UPSTREAM_MODE__/${UPSTREAM_MODE}/g" \
     -e "s/__WAS_LOCAL_IP__/${WAS_LOCAL}/g" \
     -e "s/__PEER_WEB_IP__/${PEER_WEB}/g" \
@@ -138,7 +132,6 @@ fi
 
 sed -e "s/__SERVICE_FQDN__/${SERVICE_FQDN}/g" \
     -e "s/__WEB_FQDN__/${WEB_FQDN}/g" \
-    -e "s/__CHECK_TARGET__/${CHECK_TARGET}/g" \
     -e "s/__UPSTREAM_MODE__/${UPSTREAM_MODE}/g" \
     -e "s#__UPSTREAM_TARGET__#${UPSTREAM_TARGET}#g" \
     -e "s|__DEEP_FORCE_OK__|${DEEP_FORCE_LINE}|g" \

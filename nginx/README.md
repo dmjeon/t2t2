@@ -28,7 +28,6 @@ GSLB 전환으로 번지지 않는다.
 /api/           → was_pool          로컬 L4 VIP:8000     실서비스
 /health/deep    → was_pool          로컬 L4 VIP:8000     GSLB 전용
 /health/local   → was_local_direct  로컬 WAS:8000        알람 전용 (L4 우회)
-/checkvs/       → was_check_vs      점검 VS:8000         backup 멤버 검증 (C13)
 /peer/          → peer_web          반대편 WEB:80        검증 화면 전용
 ```
 

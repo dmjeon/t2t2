@@ -10,8 +10,8 @@ AADC_ROLE_ARG="${1:-}"
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 require_bash
 require_role 'WAS-*'
-# 이 DC 의 L4 VIP / backup 멤버를 얻는다. /l4test 화면이 "무엇을 때려야 하는가"를
-# 띄우는 데 쓴다 (L4_VIP, BACKUP_MEMBER, WAS_LOCAL).
+# 이 DC 의 L4 VIP 를 얻는다. /l4test 화면이 "무엇을 때려야 하는가"를
+# 띄우는 데 쓴다 (L4_VIP, WAS_LOCAL).
 resolve_dc_vars
 
 banner "WAS 계층 (FastAPI)" "WAS tier (FastAPI)"
@@ -26,7 +26,6 @@ kv "app version" "${APP_VERSION}"
 kv "upstream mode" "${UPSTREAM_MODE}   ($( [ "${UPSTREAM_MODE}" = l4 ] \
                        && echo 'WEB -> L4 VIP -> WAS' || echo 'WEB -> WAS 직결 (L4 우회)' ))"
 kv "local L4 VIP"  "${L4_VIP}:${L4_PORT}"
-kv "backup member" "${BACKUP_MEMBER}:${APP_PORT}   (이 DC L4 풀의 원격 멤버)"
 
 step "패키지" "Packages"
 ensure_pkg python3 python3-pip mariadb
@@ -62,7 +61,6 @@ AADC_WEB_PREFIX_DC400=${WEB_PREFIX_DC400}
 # "WEB 은 l4 로 설치됐는데 실제로 들어온 앞 홉은 WEB 주소다" 가 한눈에 보인다.
 AADC_UPSTREAM_MODE=${UPSTREAM_MODE}
 AADC_L4_VIP=${L4_VIP}
-AADC_BACKUP_MEMBER=${BACKUP_MEMBER}
 AADC_L4_PORT=${L4_PORT}
 AADC_APP_PORT=${APP_PORT}
 AADC_DB_MODE=${DB_MODE}
@@ -139,7 +137,7 @@ cat <<L4TEST
 
   내부 L4 VIP 를 잡은 뒤 / once the internal L4 VIP is up
       http://${L4_VIP}:${L4_PORT}/l4test          -> 이 DC(${AADC_DC}) 의 WAS 가 받아야 정상
-      http://${BACKUP_MEMBER}:${APP_PORT}/l4test   -> 반대편 DC 의 WAS 가 받아야 정상 (C13, L4 미경유)
+      로컬 WAS 를 내린 뒤 같은 VIP                -> 반대편 DC 의 WAS 가 받아야 정상 (C13)
 
   화면 맨 위 한 줄만 보면 된다 / read only the banner at the top
       초록 "VIP 경유 확인"   앞 홉이 ${L4_PREFIX_DC500}/${L4_PREFIX_DC400} = L4 를 탔다

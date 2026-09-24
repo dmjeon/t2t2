@@ -109,16 +109,7 @@ server {
     location = /health/web {
         access_log off;
         add_header Content-Type application/json;
-        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr","client":"$remote_addr","raw":"$realip_remote_addr","xff":"$http_x_forwarded_for","upstream_mode":"__UPSTREAM_MODE__","upstream_target":"__UPSTREAM_TARGET__","check_target":"__CHECK_TARGET__"}';
-    }
-
-    # ----- backup 멤버 직접 점검 (C13) — 10-upstream 의 was_check_vs ----------
-    location /checkvs/ {
-        include /etc/nginx/conf.d/acl-admin.inc;
-        proxy_pass http://was_check_vs/;
-        include /etc/nginx/conf.d/proxy-headers.inc;
-        proxy_next_upstream off;
-        access_log off;
+        return 200 '{"check":"web","status":"ok","web_host":"$hostname","web_addr":"$server_addr","client":"$remote_addr","raw":"$realip_remote_addr","xff":"$http_x_forwarded_for","upstream_mode":"__UPSTREAM_MODE__","upstream_target":"__UPSTREAM_TARGET__"}';
     }
 
     # ----- 반대편 DC 조회 (검증 화면 전용, 서비스 경로 아님) ------------------

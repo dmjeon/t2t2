@@ -51,7 +51,7 @@ cat <<'NEXT'
 Fault injection is done by a person; the scripts only observe and judge.
 
   ../verify/01-baseline-c1-c2.sh          C1 DCI RTT          <= 최우선 / first
-  ../verify/02-path-r1-r6.sh              R1-R6, C12, C13
+  ../verify/02-path-r1-r6.sh              R1-R6, C12
   ../verify/03-health-c15-c18.sh normal   C15-C18
   ../verify/04-db-c3-c7.sh status         C3-C7
   ../verify/05-scenario-c8-c11.sh         C8-C11, C19

@@ -11,7 +11,7 @@ cp config.env.example config.env && vi config.env
 | 스크립트 | 항목 | 실행 위치 |
 |---|---|---|
 | `01-baseline-c1-c2.sh` | C1, C2, C2-a/b | WAS-APP1-500 |
-| `02-path-r1-r6.sh` | R1~R6, C12, C13 | WAS-APP1-500 (R5 는 외부) |
+| `02-path-r1-r6.sh` | R1~R6, C12 (C13 은 안내만) | WAS-APP1-500 (R5 는 외부) |
 | `03-health-c15-c18.sh` | C15~C18 | 점프서버 |
 | `04-db-c3-c7.sh` | C3~C7 | 점프서버 |
 | `05-scenario-c8-c11.sh` | C8~C11, C19 | 점프서버 |

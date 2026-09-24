@@ -4,7 +4,7 @@
 열어** 지금 그 구성이 되는지 아닌지를 한 화면에서 보려고 만든 것이다.
 
   http://<L4 VIP>:8000/l4test        → 로컬 멤버(이 DC 의 WAS)가 받아야 정상
-  http://<점검 VS VIP>:8000/l4test   → 반대편 DC 의 WAS 가 받아야 정상 (C13)
+  로컬 WAS 를 내린 뒤 같은 VIP        → 반대편 DC 의 WAS 가 받아야 정상 (C13)
 
 판정 근거는 /api/info 와 완전히 동일하다 — req.client.host 가 SNAT 된 L4
 주소인가, WEB 주소인가. 같은 값을 사람이 읽는 모양으로 바꿔 놓았을 뿐이라
@@ -49,7 +49,6 @@ def _config_view() -> dict:
         # config.env 의 UPSTREAM_MODE. **기대값**이지 관측값이 아니다.
         "upstream_mode": settings.upstream_mode,
         "l4_vip": settings.l4_vip,
-        "backup_member": settings.backup_member,
         "l4_port": settings.l4_port,
         "app_port": settings.app_port,
         "l4_prefix_dc500": settings.l4_prefix_dc500,
@@ -161,8 +160,8 @@ _PAGE = r"""<!DOCTYPE html>
   <h2>때려야 할 주소 / what to test</h2>
   <div class="urls" id="urls"></div>
   <p class="hint">
-    로컬 VIP 는 <b>이 DC 의 WAS</b> 가, 점검 VS 는 <b>반대편 DC 의 WAS</b> 가 받아야 정상이다
-    (AADC-POC.md 3-3절 · C13). 받은 쪽이 바뀌어 있으면 멤버 구성이 반대다.
+    로컬 VIP 는 평시 <b>이 DC 의 WAS</b> 가 받아야 정상이다. 로컬 WAS 를 내리면
+    <b>반대편 DC 의 WAS</b> 가 받아야 한다 (backup 멤버 · C13). 평시에 반대편이 받으면 멤버 구성이 반대다.
   </p>
 </div>
 
@@ -255,7 +254,6 @@ function renderCfg(){
     ["이 DC / this DC",            CFG.was_dc],
     ["이 WAS / this WAS",          CFG.was_host],
     ["로컬 L4 VIP",                CFG.l4_vip + ":" + CFG.l4_port],
-    ["backup 멤버 / backup member", CFG.backup_member + ":" + CFG.app_port],
     ["WAS 포트 / app port",        CFG.app_port],
     ["L4 프리픽스 DC-500",         CFG.l4_prefix_dc500],
     ["L4 프리픽스 DC-400",         CFG.l4_prefix_dc400],
@@ -264,8 +262,7 @@ function renderCfg(){
   ]);
 
   var u = [
-    [CFG.l4_vip + ":" + CFG.l4_port, "로컬 L4 VIP — " + CFG.was_dc + " 의 WAS 가 받아야 정상"],
-    [CFG.backup_member + ":" + CFG.app_port, "backup 멤버 직접 — " + CFG.peer_dc + " 의 WAS 가 받아야 정상 (C13, L4 미경유)"]
+    [CFG.l4_vip + ":" + CFG.l4_port, "로컬 L4 VIP — " + CFG.was_dc + " 의 WAS 가 받아야 정상. 로컬 WAS 를 내리면 " + CFG.peer_dc + " 의 WAS (C13)"]
   ];
   document.getElementById("urls").innerHTML = u.map(function(x){
     var href = "http://" + x[0] + "/l4test";

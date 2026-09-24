@@ -16,7 +16,7 @@ def info(request: Request, log: bool = False):
 
       R3   curl <DC500_L4_VIP>:8000/api/info  → was_host = WAS-APP1-500
       C12  동일 요청                           → via_l4  = 10.3.20.x
-      C13  curl <DC500_점검VS_VIP>:8000/...    → was_host = WAS-DC2
+      C13  로컬 WAS 중지 후 R3 와 같은 요청      → was_host = WAS-DC2, cross_dc = true
       R5   curl https://www.niceci.cloud/...   → client_ip = 고객 공인 IP
     """
     t = trace(request)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 경로 및 구성 검증 — AADC-POC.md 11-2절 (R1~R6, C12, C13)
+# 경로 및 구성 검증 — AADC-POC.md 11-2절 (R1~R6, C12. C13 은 수동 — 아래 안내)
 #   실행: WAS-APP1-500 (DC-500) 에서. R5/R6 만 별도 위치에서.
 # =============================================================================
 set -uo pipefail
@@ -24,7 +24,6 @@ fi
 
 if need_l4 "R3"; then
   L4="http://${DC500_L4_VIP}:${L4_PORT}"
-  CHK="http://${DC500_BACKUP_MEMBER}:${APP_PORT}"   # L4 풀의 원격 멤버 직접
 
   hdr "R3  L4 로컬 멤버"
   body=$(get "${L4}/api/info")
@@ -41,15 +40,9 @@ if need_l4 "R3"; then
     note "그 구성에서는 응답이 L4 를 우회해 연결이 끊긴다 (5-1절)."
   fi
 
-  hdr "C13  backup 멤버 (L4 풀 원격 멤버 직접)"
-  body=$(get "${CHK}/api/info")
-  if [ -z "${body}" ]; then
-    ng "C13" "${CHK}/api/info 호출 실패 — backup 멤버가 죽어 있다. WAS 장애 시 흡수 불가."
-  else
-    was_host=$(jqget "${body}" was_host)
-    was_dc=$(jqget "${body}" was_dc)
-    assert_eq "C13" "DC-400" "${was_dc}" "backup 멤버가 WAS-DC2 인가 (was_host=${was_host})"
-  fi
+  hdr "C13  backup 멤버"
+  note "평시 점검은 두지 않는다. WAS-APP1 에서 systemctl stop aadc-was 후 위 R3 요청을"
+  note "다시 보내 was_host=WAS-DC2 / cross_dc=true 인지, 검증 화면이 FAILOVER 인지 본다."
 fi
 
 hdr "R5  고객 IP 보존 (외부에서 실행할 것)"

@@ -28,14 +28,6 @@ upstream was_local_direct {
     keepalive 4;
 }
 
-# 교차(backup) 멤버 직접 점검 — /checkvs/ 가 쓴다.
-# L4 풀의 원격 멤버 주소(config.env DC*_BACKUP_MEMBER)를 L4 를 거치지 않고 부른다.
-# "L4 가 넘어갈 곳이 살아 있는가"를 L4 가 쓰는 바로 그 주소로 확인한다.
-# 점검 전용 VS(10.x.20.101)를 두려던 설계는 폐기했다 — 장비에 만들지 않았다.
-upstream was_check_vs {
-    server __CHECK_TARGET__ max_fails=0;
-}
-
 # 반대편 DC 의 WEB — 검증 화면이 양쪽을 나란히 보여 주기 위한 경유로.
 # 브라우저 CORS 를 피하려고 nginx 가 대신 물어본다. 서비스 트래픽이 아니다.
 upstream peer_web {
