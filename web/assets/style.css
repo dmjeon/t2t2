@@ -178,18 +178,15 @@ footer {
 
 #pathMap .e         { fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 #pathMap .e.live    { stroke: var(--accent); }
-#pathMap .e.db      { stroke: var(--db); }
 #pathMap .e.idle    { stroke: var(--idle); stroke-dasharray: 6 4; }
 #pathMap .e.bypass  { stroke: var(--idle); stroke-width: 1.1; stroke-dasharray: 2.5 4.5; }
 #pathMap .e.thin    { stroke: var(--border); stroke-width: 1.2; }
 #pathMap .e.dash    { stroke-dasharray: 4 4; }
 #pathMap .el        { font: 500 10px -apple-system, "Noto Sans KR", sans-serif; fill: var(--muted); }
 #pathMap .el.live   { fill: var(--accent); }
-#pathMap .el.db     { fill: var(--db); }
 #pathMap .el.warn   { fill: var(--warn); }
 #pathMap .el.dim    { fill: var(--idle); font-size: 9px; }
 #pathMap .mk-live   { fill: var(--accent); }
-#pathMap .mk-db     { fill: var(--db); }
 #pathMap .mk-idle   { fill: var(--idle); }
 #pathMap .mk-warn   { fill: var(--warn); }
 #pathMap .mk-ok     { fill: var(--ok); }
@@ -197,7 +194,7 @@ footer {
 /* ---------------------------------------------------------------------------
  * 두 가지만 칠한다.
  *
- *   cur   지금 지나간 경로       — 원래 색(트래픽 파랑 / DB 보라), 불투명 + halo
+ *   cur   지금 지나간 경로       — 파랑 (WEB→WAS 와 WAS→DB 를 같은 색으로), 불투명 + halo
  *   fail  설정됐는데 못 가는 경로 — 빨강 점선 + ✕
  *
  * 나머지는 배경이지만 **읽을 수 있을 만큼은 남긴다.** 경로 밖 노드가 안 보이면

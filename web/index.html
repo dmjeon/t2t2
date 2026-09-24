@@ -39,7 +39,6 @@
      aria-label="왼쪽 DC-500, 오른쪽 DC-400. 인터넷에서 DB까지의 홉 중 지금 실제로 활성화된 경로만 밝게 표시된다.">
 <defs>
   <marker id="ah-live" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="mk-live"/></marker>
-  <marker id="ah-db" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="mk-db"/></marker>
   <marker id="ah-idle" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="mk-idle"/></marker>
   <marker id="ah-ok" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="mk-ok"/></marker>
   <marker id="ah-warn" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="mk-warn"/></marker>
@@ -62,7 +61,7 @@
 <g class="e-g" id="e-web1-l4"><line class="e live" x1="390" y1="358" x2="390" y2="442" marker-end="url(#ah-live)"/><text class="el live" x="398" y="404">VIP 경로 · 8000</text><text class="brk" x="390" y="406">✕</text></g>
 <g class="e-g" id="e-l4-was1"><line class="e live" x1="390" y1="468" x2="390" y2="562" marker-end="url(#ah-live)"/><text class="el live" x="398" y="548">weight 100 · Full NAT</text><text class="brk" x="390" y="519">✕</text></g>
 <g class="e-g bypass-g" id="e-web1-direct"><polyline class="e bypass" points="378,352 330,400 330,530 378,568" marker-end="url(#ah-idle)"/><text class="el dim" x="322" y="415" text-anchor="end">다이렉트 · L4 우회</text><text class="brk" x="330" y="469">✕</text></g>
-<g class="e-g" id="e-was1-db"><line class="e db" x1="390" y1="588" x2="390" y2="677" marker-end="url(#ah-db)"/><text class="el db" x="398" y="616">TCP 3306</text><text class="brk" x="390" y="659">✕</text></g>
+<g class="e-g" id="e-was1-db"><line class="e live" x1="390" y1="588" x2="390" y2="677" marker-end="url(#ah-live)"/><text class="el live" x="398" y="616">TCP 3306</text><text class="brk" x="390" y="659">✕</text></g>
 
 <g class="e-g" id="e-inet-gslb2"><line class="e live" x1="683" y1="70" x2="937" y2="140" marker-end="url(#ah-live)"/><text class="brk" x="810" y="109">✕</text></g>
 <g class="e-g" id="e-gslb2-fg2"><line class="e live" x1="950" y1="163" x2="950" y2="227" marker-end="url(#ah-live)"/><text class="el live" x="958" y="199">DNS 1%</text></g>
@@ -70,7 +69,7 @@
 <g class="e-g" id="e-web2-l4"><line class="e live" x1="950" y1="358" x2="950" y2="442" marker-end="url(#ah-live)"/><text class="el live" x="958" y="404">VIP 경로 · 8000</text><text class="brk" x="950" y="406">✕</text></g>
 <g class="e-g" id="e-l4-was2"><line class="e live" x1="950" y1="468" x2="950" y2="562" marker-end="url(#ah-live)"/><text class="el live" x="958" y="548">weight 100 · Full NAT</text><text class="brk" x="950" y="519">✕</text></g>
 <g class="e-g bypass-g" id="e-web2-direct"><polyline class="e bypass" points="962,352 1010,400 1010,530 962,568" marker-end="url(#ah-idle)"/><text class="el dim" x="1018" y="415">다이렉트 · L4 우회</text><text class="brk" x="1010" y="469">✕</text></g>
-<g class="e-g" id="e-was2-db"><polyline class="e db" points="937,575 720,575 720,630 400,630 390,677" marker-end="url(#ah-db)"/><text class="el db" x="560" y="623" text-anchor="middle">DB 쿼리 · DCI 경유 (N×RTT)</text><text class="brk" x="720" y="606">✕</text></g>
+<g class="e-g" id="e-was2-db"><polyline class="e live" points="937,575 720,575 720,630 400,630 390,677" marker-end="url(#ah-live)"/><text class="el live" x="560" y="623" text-anchor="middle">DB 쿼리 · DCI 경유 (N×RTT)</text><text class="brk" x="720" y="606">✕</text></g>
 
 <g class="e-g" id="e-fadc1a-vip"><line class="e thin" x1="258" y1="455" x2="377" y2="455"/></g>
 <g class="e-g" id="e-fadc1b-vip"><line class="e thin dash" x1="522" y1="455" x2="403" y2="455"/><text class="el warn" x="463" y="444" text-anchor="middle">만료 · HA 불가</text></g>
@@ -80,7 +79,7 @@
 <g class="e-g" id="e-l4a-was2"><polyline class="e idle" points="398,464 420,505 925,505 940,566" marker-end="url(#ah-idle)"/><text class="el xl" x="700" y="498" text-anchor="middle">DC-500 L4 → 원격 backup 멤버</text><text class="fo-badge" x="700" y="498" text-anchor="middle">▶ FAILOVER · backup 멤버 활성</text><text class="brk" x="672" y="509">✕</text></g>
 <g class="e-g" id="e-l4b-was1"><polyline class="e idle" points="942,464 920,520 425,520 403,569" marker-end="url(#ah-idle)"/><text class="el xl" x="560" y="514" text-anchor="middle">DC-400 L4 → 원격 backup 멤버</text><text class="fo-badge" x="560" y="514" text-anchor="middle">▶ FAILOVER · backup 멤버 활성</text><text class="brk" x="672" y="524">✕</text></g>
 
-<g class="e-g" id="e-vip-writer"><line class="e db" x1="390" y1="702" x2="390" y2="787" marker-end="url(#ah-db)"/><text class="el db" x="398" y="750">VIP 보유 노드</text><text class="brk" x="390" y="749">✕</text></g>
+<g class="e-g" id="e-vip-writer"><line class="e live" x1="390" y1="702" x2="390" y2="787" marker-end="url(#ah-live)"/><text class="el live" x="398" y="750">VIP 보유 노드</text><text class="brk" x="390" y="749">✕</text></g>
 
 <g class="n" id="n-inet"><circle class="halo" cx="670" cy="62" r="14"/><circle class="nd" cx="670" cy="62" r="10"/>
   <text class="nm" x="670" y="30">인터넷 · 고객</text><text class="ni" x="670" y="44">www.niceci.cloud</text></g>
